@@ -124,6 +124,8 @@ Open questions blocking a phase are listed in docs/DECISIONS.md (D-xx).
       push_out_fraction 0.5 (D-21), nearest-cluster range (D-22)): person 3.3 m 0.15 m,
       1.4 m 0.15 m, 0.8 m 0.25 m; chair 1.8 m 0.09 m, 1.0 m 0.11 m
 - [ ] OPEN D-20: Nav2 controller_server stops taking in /tf when yolo + fusion both run
+      ROOT CAUSE 2026-10-03 (gdb): ABBA deadlock in tf2_ros::Buffer (listener testTransformableRequests
+      vs obstacle-layer MessageFilter waitForTransform); fix option pending decision
       (time-boxed 2026-10-03: not sim time, not CPU, not annotated images, not blocking lookups;
       controller stops taking in all /tf when the robot reaches a goal; next: gdb backtrace)
 - [x] DDS: CycloneDDS for all SemNav processes (D-20), config/cyclonedds.xml; images 15 Hz
@@ -131,23 +133,25 @@ Open questions blocking a phase are listed in docs/DECISIONS.md (D-xx).
 **Done when:** Markers sit on the right objects in RViz.
 
 ## Phase 6 (Day 6) - SemanticLayer costmap plugin
-- [ ] `semnav_costmap`: nav2_costmap_2d::Layer subclass, PLUGINLIB_EXPORT_CLASS, plugin.xml
+- [x] `semnav_costmap`: nav2_costmap_2d::Layer subclass, PLUGINLIB_EXPORT_CLASS, plugin.xml
 - [ ] Prototype: paint one fixed disc; confirm plugin loads
-- [ ] Subscription to /semantic_obstacles, mutex snapshot copied at start of updateBounds
-- [ ] updateBounds dirty window, updateCosts with LETHAL core + 252*exp(-k*(d-r)) decay to
+- [x] Subscription to /semantic_obstacles, mutex snapshot copied at start of updateBounds
+- [x] updateBounds dirty window, updateCosts with LETHAL core + 252*exp(-k*(d-r)) decay to
       class_inflation (person 1.0, chair 0.3, default 0.2), std::max combine, reset() clears cache
-- [ ] tf_ conversion map -> costmap global frame for rolling local costmap
-- [ ] Added to global (static, obstacle, semantic, inflation) and local (obstacle, semantic, inflation) costmaps
-- [ ] GoogleTest for header-only cost math
+- [x] tf_ conversion map -> costmap global frame for rolling local costmap
+- [x] Added to global (static, obstacle, semantic, inflation) and local (obstacle, semantic, inflation) costmaps
+      (enabled: False until D-20 is fixed; verified 2026-10-03: loads in both costmaps, goal SUCCEEDED)
+- [ ] Prototype / live check with the layer enabled (paint around a person) - after D-20
+- [x] GoogleTest for header-only cost math (test_cost_model 16)
 
 **Done when:** Costmap visibly changes around a person.
 
 ## Phase 7 (Day 7) - safety_gate_node + single launch
-- [ ] Header-only gate logic: forward cone min range (+/-30 deg, widened with angular speed),
+- [x] Header-only gate logic: forward cone min range (+/-30 deg, widened with angular speed),
       s = clamp((d - d_stop)/(d_slow - d_stop), 0, 1), v = s * v_cmd, angular kept
-- [ ] 20 Hz timer publish; watchdog (0.5 s cmd, 0.3 s scan) -> zero; accel limiter
-- [ ] Cone direction follows sign of linear.x: forward cone forward, rear cone reversing (D-13, deviation)
-- [ ] GoogleTest: wall at 0.3 m -> zero; far scan -> passthrough; obstacle behind + reverse -> zero,
+- [x] 20 Hz timer publish; watchdog (0.5 s cmd, 0.3 s scan) -> zero; accel limiter (code + tests; not run in sim)
+- [x] Cone direction follows sign of linear.x: forward cone forward, rear cone reversing (D-13, deviation)
+- [x] GoogleTest: wall at 0.3 m -> zero; far scan -> passthrough; obstacle behind + reverse -> zero,
       obstacle behind + forward -> passthrough (D-13)
 - [ ] Own navigation launch without velocity_smoother; controller and behavior_server remapped to
       /cmd_vel_nav; gate is the only /cmd_vel publisher (D-01, D-02)

@@ -1,0 +1,18 @@
+# safety_gate_node parameters (architecture 7.4, D-13). /cmd_vel_nav + /scan -> /cmd_vel.
+safety_gate_node:
+  ros__parameters:
+    rate_hz: 20.0                # fixed /cmd_vel publish rate (timer, never from callbacks)
+    cone_half_angle_deg: 30.0    # base cone half-angle; forward if linear.x >= 0, rear if < 0 (D-13)
+    cone_widen_gain: 20.0        # deg of extra half-angle per rad/s of |angular.z| (1 rad/s -> 50 deg)
+    cone_max_half_angle_deg: 60.0  # cap on the widened half-angle
+    # Distances are LiDAR ranges (base_scan). TB3 waffle body edge is ~0.14 m from the LiDAR
+    # front and rear, so d_stop 0.3 leaves ~0.16 m; the PDF test "wall at 0.3 m -> zero" holds.
+    d_stop: 0.3                  # m, linear zero at or below
+    d_slow: 0.6                  # m, full speed at or above; linear scale in between
+    cmd_timeout: 0.5             # s, no /cmd_vel_nav -> zero
+    scan_timeout: 0.3            # s, no /scan -> zero (TB3 scan is 5 Hz = 0.2 s period)
+    max_accel: 1.0               # m/s^2 for INCREASES of |linear.x| (0.05 m/s per tick at 20 Hz);
+                                 # decreases (braking, stop) are immediate
+    cmd_qos_depth: 10
+    scan_qos_depth: 5
+    log_throttle_ms: 2000
