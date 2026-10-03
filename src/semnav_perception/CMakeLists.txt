@@ -43,6 +43,16 @@ get_filename_component(SEMNAV_MODEL_PATH "${SEMNAV_MODEL_PATH}" ABSOLUTE)
 
 install(DIRECTORY include/ DESTINATION include)
 
+add_executable(yolo_onnx_node src/yolo_onnx_node.cpp)
+target_include_directories(yolo_onnx_node PRIVATE include)
+target_link_libraries(yolo_onnx_node onnxruntime::onnxruntime ${OpenCV_LIBS})
+ament_target_dependencies(yolo_onnx_node cv_bridge rclcpp sensor_msgs std_msgs vision_msgs)
+# Default model_path parameter: the repo's models/ (model files are not in git, D-12).
+target_compile_definitions(yolo_onnx_node PRIVATE
+  SEMNAV_DEFAULT_MODEL_PATH="${SEMNAV_MODEL_PATH}")
+set_target_properties(yolo_onnx_node PROPERTIES INSTALL_RPATH "$ORIGIN/..")
+install(TARGETS yolo_onnx_node DESTINATION lib/${PROJECT_NAME})
+
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
 
@@ -53,11 +63,13 @@ if(BUILD_TESTING)
     SEMNAV_TEST_MODEL_PATH="${SEMNAV_MODEL_PATH}")
 
   # ROS-free pre/post-processing (architecture 7.1 tests).
-  foreach(t test_letterbox test_yolo_decode)
+  foreach(t test_letterbox test_yolo_decode test_rolling_stats test_yolo_detector)
     ament_add_gtest(${t} test/${t}.cpp)
     target_include_directories(${t} PRIVATE include)
-    target_link_libraries(${t} ${OpenCV_LIBS})
+    target_link_libraries(${t} onnxruntime::onnxruntime ${OpenCV_LIBS})
   endforeach()
+  target_compile_definitions(test_yolo_detector PRIVATE
+    SEMNAV_TEST_MODEL_PATH="${SEMNAV_MODEL_PATH}")
 endif()
 
 ament_package()

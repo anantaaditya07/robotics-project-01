@@ -1,0 +1,15 @@
+# SemNav perception parameters (architecture 7.1 / 7.2). Loaded by launch/perception.launch.py.
+yolo_onnx_node:
+  ros__parameters:
+    # model_path defaults to <repo>/models/yolov8n.onnx (set at build time); override here if needed.
+    conf_threshold: 0.35
+    iou_threshold: 0.45
+    input_size: 640            # must match the model's static input
+    class_filter: ["person", "chair"]   # D-15
+    use_cuda: false            # CPU ORT build; true falls back to CPU with a warning
+    publish_annotated: true
+    intra_op_num_threads: 4
+    image_qos_depth: 1         # D-07: SensorData depth 1-2
+    detections_qos_depth: 5
+    metrics_period: 5.0        # s, log + /metrics
+    metrics_window: 200        # samples in the rolling p50/p95 window

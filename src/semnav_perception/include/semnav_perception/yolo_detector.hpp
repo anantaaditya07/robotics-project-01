@@ -2,15 +2,22 @@
 //
 // The free functions in this header are ROS-free and onnxruntime-free so they
 // can be unit tested in isolation. They mirror decode() and nms() in
-// scripts/check_yolo_on_frames.py. The ORT-backed YoloDetector class is to be
-// appended below them.
+// scripts/check_yolo_on_frames.py. The ORT-backed YoloDetector class below them
+// depends on ONNX Runtime and OpenCV only (still no ROS).
 #pragma once
 
+#include <onnxruntime_cxx_api.h>
+
 #include <algorithm>
+#include <array>
 #include <cctype>
+#include <chrono>
 #include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <opencv2/core.hpp>
 #include <opencv2/dnn.hpp>
+#include <semnav_perception/letterbox.hpp>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -242,5 +249,133 @@ inline std::vector<bool> build_class_mask(const std::vector<std::string>& names,
   }
   return mask;
 }
+
+struct YoloOptions {
+  std::string model_path;
+  int intra_op_num_threads;
+  bool use_cuda;
+};
+
+/// Per-stage wall-clock timing of one detect() call, milliseconds.
+struct StageTiming {
+  double preprocess_ms;
+  double infer_ms;
+  double postprocess_ms;
+};
+
+/// YOLOv8 ONNX detector (architecture 7.1): letterbox -> BGR to RGB -> /255 ->
+/// NCHW -> Ort::Session::Run -> decode -> NMS -> undo letterbox.
+/// Input/output names, the square input size and the class names are read from
+/// the model. The input buffer and its Ort::Value are allocated once and reused.
+class YoloDetector {
+ public:
+  explicit YoloDetector(const YoloOptions& opt)
+      : env_(ORT_LOGGING_LEVEL_WARNING, "semnav_yolo"),
+        memory_info_(Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault)) {
+    Ort::SessionOptions so;
+    so.SetIntraOpNumThreads(opt.intra_op_num_threads);
+    so.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+    if (opt.use_cuda) {
+      try {
+        OrtCUDAProviderOptions cuda{};
+        so.AppendExecutionProvider_CUDA(cuda);
+        cuda_active_ = true;
+      } catch (const Ort::Exception& e) {
+        warnings_.push_back(std::string("CUDA execution provider unavailable, using CPU: ") +
+                            e.what());
+      }
+    }
+    session_ = std::make_unique<Ort::Session>(env_, opt.model_path.c_str(), so);
+
+    Ort::AllocatorWithDefaultOptions alloc;
+    if (session_->GetInputCount() != 1 || session_->GetOutputCount() != 1) {
+      throw std::runtime_error("YoloDetector: expected 1 input and 1 output");
+    }
+    input_name_ = session_->GetInputNameAllocated(0, alloc).get();
+    output_name_ = session_->GetOutputNameAllocated(0, alloc).get();
+    const auto in_shape = session_->GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
+    if (in_shape.size() != 4 || in_shape[1] != kInputChannels || in_shape[2] <= 0 ||
+        in_shape[2] != in_shape[3]) {
+      throw std::runtime_error("YoloDetector: expected static input [1,3,S,S]");
+    }
+    input_size_ = static_cast<int>(in_shape[2]);
+    const auto out_shape = session_->GetOutputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
+    if (out_shape.size() != 3 || out_shape[1] <= kNumBoxValues || out_shape[2] <= 0) {
+      throw std::runtime_error("YoloDetector: expected output [1, 4+C, N]");
+    }
+    num_attrs_ = static_cast<int>(out_shape[1]);
+    num_anchors_ = static_cast<int>(out_shape[2]);
+
+    const auto meta = session_->GetModelMetadata();
+    const auto names = meta.LookupCustomMetadataMapAllocated("names", alloc);
+    if (!names) {
+      throw std::runtime_error("YoloDetector: model metadata has no 'names'");
+    }
+    class_names_ = parse_class_names(names.get());
+    if (static_cast<int>(class_names_.size()) != num_attrs_ - kNumBoxValues) {
+      throw std::runtime_error("YoloDetector: class name count does not match output shape");
+    }
+
+    input_buffer_.assign(static_cast<std::size_t>(kInputChannels) * input_size_ * input_size_, 0.F);
+    input_shape_ = {1, kInputChannels, input_size_, input_size_};
+    input_tensor_ =
+        Ort::Value::CreateTensor<float>(memory_info_, input_buffer_.data(), input_buffer_.size(),
+                                        input_shape_.data(), input_shape_.size());
+  }
+
+  /// Detections with boxes in source-image pixels, sorted by score descending.
+  std::vector<Detection> detect(const cv::Mat& bgr, float conf_threshold, float iou_threshold,
+                                const std::vector<bool>* class_mask, StageTiming* timing) {
+    using Clock = std::chrono::steady_clock;
+    const auto ms = [](Clock::time_point a, Clock::time_point b) {
+      return std::chrono::duration<double, std::milli>(b - a).count();
+    };
+    const auto t0 = Clock::now();
+    const LetterboxInfo info = letterbox(bgr, input_size_, letterboxed_);
+    blob_from_letterboxed(letterboxed_, input_buffer_);  // same size: no reallocation
+    const auto t1 = Clock::now();
+
+    const char* in_names[] = {input_name_.c_str()};
+    const char* out_names[] = {output_name_.c_str()};
+    auto outputs =
+        session_->Run(Ort::RunOptions{nullptr}, in_names, &input_tensor_, 1, out_names, 1);
+    const auto t2 = Clock::now();
+
+    const float* out = outputs.front().GetTensorData<float>();
+    auto dets = nms(decode(out, num_attrs_, num_anchors_, conf_threshold, class_mask),
+                    conf_threshold, iou_threshold);
+    for (auto& d : dets) {
+      d.box = unletterbox(d.box, info);
+    }
+    const auto t3 = Clock::now();
+    if (timing != nullptr) {
+      *timing = {ms(t0, t1), ms(t1, t2), ms(t2, t3)};
+    }
+    return dets;
+  }
+
+  int input_size() const { return input_size_; }
+  bool cuda_active() const { return cuda_active_; }
+  const std::vector<std::string>& class_names() const { return class_names_; }
+  /// Non-fatal problems found while loading (e.g. CUDA fallback).
+  const std::vector<std::string>& warnings() const { return warnings_; }
+
+ private:
+  Ort::Env env_;
+  Ort::MemoryInfo memory_info_;
+  std::unique_ptr<Ort::Session> session_;
+  std::string input_name_;
+  std::string output_name_;
+  int input_size_{0};
+  int num_attrs_{0};
+  int num_anchors_{0};
+  std::vector<std::string> class_names_;
+  std::vector<std::string> warnings_;
+  bool cuda_active_{false};
+  std::vector<float> input_buffer_;
+  std::array<int64_t, 4> input_shape_{};
+  Ort::Value input_tensor_{nullptr};
+  cv::Mat letterboxed_;
+};
 
 }  // namespace semnav_perception

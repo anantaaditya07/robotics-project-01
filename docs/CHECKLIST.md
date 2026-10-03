@@ -84,22 +84,29 @@ Open questions blocking a phase are listed in docs/DECISIONS.md (D-xx).
 - [x] `semnav_msgs`: SemanticObstacle.msg, SemanticObstacleArray.msg exactly as section 6 (2026-10-03, builds warning-free)
 - [x] `semnav_perception`: header-only letterbox.hpp / yolo_detector.hpp (no ROS) - letterbox, blob, decode,
       per-class NMS, names parser, class mask; parity with scripts/check_yolo_on_frames.py
-- [ ] yolo_onnx_node: subscribe /camera/image_raw (SensorData), infer, publish
+- [x] yolo_onnx_node: subscribe /camera/image_raw (SensorData), infer, publish
       /detections (vision_msgs/Detection2DArray, reliable depth 5, stamp copied from image)
       and /detections/image (annotated, best effort)
+      Verified headless 2026-10-03: chair 0.91 / person 0.81, boxes match the Python check; header
+      copied from image (frame camera_rgb_optical_frame); /detections/image 15 Hz.
+      launch/perception.launch.py + config/perception_params.yaml; RViz 'Detections' image display
+- [ ] USER: boxes visible in RViz (Detections display)
 
-**Done when:** Boxes visible in RViz.
+**Done when:** Boxes visible in RViz. (Headless verified; RViz view pending USER)
 
 ## Phase 4 (Day 4) - YOLO node hardening + tests
-- [ ] Worker thread; callback stores newest frame under mutex + condition variable; drops old frames
-- [ ] ORT options: intra_op_num_threads (default 4), ORT_ENABLE_ALL, reused input buffer, use_cuda param
-- [ ] Parameters: model_path, conf_threshold (0.35), iou_threshold (0.45), input_size, class_filter (default [person, chair], D-15),
+- [x] Worker thread; callback stores newest frame under mutex + condition variable; drops old frames
+- [x] ORT options: intra_op_num_threads (default 4), ORT_ENABLE_ALL, reused input buffer, use_cuda param
+      (CPU-only ORT build: use_cuda logs a warning and falls back to CPU)
+- [x] Parameters: model_path, conf_threshold (0.35), iou_threshold (0.45), input_size, class_filter (default [person, chair], D-15),
       use_cuda, publish_annotated
-- [ ] Stage timing (preprocess/infer/postprocess), rolling p50/p95 logged every 5 s, published on /metrics (D-09)
+- [x] Stage timing (preprocess/infer/postprocess), rolling p50/p95 logged every 5 s, published on /metrics (D-09)
+      Layout [pre,infer,post,total] x [p50,p95], fps, dropped. Measured 2026-10-03 (CPU, 4 threads,
+      15 Hz camera): infer p50 35.0 / p95 42.2 ms, total p50 36.6 / p95 44.0 ms, 15.0 fps, 0 dropped
 - [x] GoogleTest: letterbox round-trip within 1 px; decode on synthetic [1,84,8400] tensor; NMS removes duplicate
       (test_letterbox 19, test_yolo_decode 16)
 
-**Done when:** p50/p95 reported; unit tests green.
+**Done when:** p50/p95 reported; unit tests green. - DONE 2026-10-03 (49 tests green)
 
 ## Phase 5 (Day 5) - semantic_fusion_node
 - [ ] Cache intrinsics (fx, cx) from /camera/camera_info
