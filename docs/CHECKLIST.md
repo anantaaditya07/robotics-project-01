@@ -16,10 +16,19 @@ Open questions blocking a phase are listed in docs/DECISIONS.md (D-xx).
 **Done when:** all blocking decisions answered.
 
 ## Phase 1 (Day 1) - Simulation baseline
-- [ ] Workspace layout decided (D-11) and `colcon build` of an empty `src/` succeeds
-- [ ] `TURTLEBOT3_MODEL=waffle` (already set in ~/.bashrc) and Gazebo launches turtlebot3_world
-- [ ] Teleop drives the robot (`teleop_twist_keyboard` installed)
-- [ ] RViz shows /scan, /camera/image_raw, TF tree (verify with `ros2 run tf2_tools view_frames`)
+- [x] Workspace layout (D-11): repo root is the colcon workspace; `src/semnav_bringup` builds;
+      `colcon test` runs (0 tests yet)
+- [x] `ros2 launch semnav_bringup sim.launch.py` starts Gazebo turtlebot3_world with the waffle
+      (launch arg `robot_model`, default waffle) - verified headless (`gui:=false rviz:=false`)
+- [x] Topics verified headless: /scan 5.0 Hz frame base_scan; /camera/image_raw 1920x1080 rgb8
+      frame camera_rgb_frame at ~17 Hz (configured 30 Hz; CPU-limited); /odom ~29 Hz
+- [x] TF tree verified with view_frames: odom -> base_footprint -> base_link -> {base_scan,
+      camera_link -> camera_rgb_frame -> camera_rgb_optical_frame, ...};
+      camera_rgb_optical_frame -> base_scan resolves
+- [x] Robot drives on /cmd_vel (scripted Twist 0.15 m/s: odom x -2.00 -> -1.41, stops on zero)
+- [ ] USER: teleop by keyboard (`ros2 run teleop_twist_keyboard teleop_twist_keyboard`)
+- [ ] USER: RViz (launched by sim.launch.py, config rviz/semnav.rviz) shows robot model, TF,
+      LaserScan and Camera image (could not be checked headless: RViz needs a real display)
 
 **Done when:** Teleop works; camera and scan visible in RViz.
 
