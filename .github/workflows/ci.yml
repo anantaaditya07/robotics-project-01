@@ -1,0 +1,93 @@
+# SemNav CI: build + unit tests for the C++ packages on ROS 2 Humble (Ubuntu 22.04).
+#
+# The repo root is the colcon workspace (packages live in src/).
+#
+# Scope: semnav_msgs, semnav_control, semnav_costmap, semnav_perception.
+# semnav_bringup is skipped on purpose: it has no code or tests, only launch/config/worlds, and
+# its exec_depends (gazebo_ros, nav2_*, slam_toolbox, turtlebot3_gazebo, rviz2) would pull in a
+# very large simulation stack that the build and unit tests do not need.
+#
+# D-20 tf2 underlay (scripts/setup_underlay.sh, tf2 0.25.24): runtime-only fix for an ABBA
+# deadlock in tf2_ros::Buffer. No CMakeLists requires tf2 >= 0.25.24 (plain find_package(tf2)),
+# and no unit test exercises tf2_ros, so CI builds against the apt tf2 and does not build the
+# underlay.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  SEMNAV_PACKAGES: semnav_msgs semnav_control semnav_costmap semnav_perception
+  DEBIAN_FRONTEND: noninteractive
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-22.04
+    container: ros:humble
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install base tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends curl ca-certificates git
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ROS dependencies (rosdep, built packages only)
+        run: |
+          source /opt/ros/humble/setup.bash
+          rosdep update --rosdistro humble
+          # Paths limited to the four built packages so semnav_bringup's exec deps are not
+          # installed. libopencv-dev (semnav_perception) is a rosdep key in base.yaml and
+          # resolves to the Ubuntu 22.04 apt package.
+          paths=()
+          for p in ${SEMNAV_PACKAGES}; do paths+=("src/${p}"); done
+          rosdep install --from-paths "${paths[@]}" --ignore-src --rosdistro humble -y
+          apt-get install -y --no-install-recommends python3-colcon-common-extensions
+
+      - name: Cache ONNX Runtime
+        uses: actions/cache@v4
+        with:
+          path: third_party/onnxruntime
+          key: onnxruntime-${{ runner.os }}-${{ hashFiles('scripts/setup_ort.sh') }}
+
+      - name: Fetch ONNX Runtime (scripts/setup_ort.sh, D-12)
+        run: |
+          source /opt/ros/humble/setup.bash
+          # No-op when the cache restored the pinned version (VERSION file check in the script).
+          # semnav_perception/CMakeLists.txt finds it at <repo>/third_party/onnxruntime.
+          scripts/setup_ort.sh
+
+      - name: Build
+        run: |
+          source /opt/ros/humble/setup.bash
+          # Every package already sets -Wall -Wextra -Wpedantic via add_compile_options but none
+          # sets -Werror. CLAUDE.md allows no warnings, so CI turns C++ warnings into errors here
+          # (CXX only: all hand-written code is C++; C sources are rosidl-generated).
+          colcon build --symlink-install \
+            --packages-select ${SEMNAV_PACKAGES} \
+            --event-handlers console_cohesion+ \
+            --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=-Werror
+
+      - name: Test
+        run: |
+          source /opt/ros/humble/setup.bash
+          # test_ort_session and test_yolo_detector load models/yolov8n.onnx (compiled in as
+          # SEMNAV_TEST_MODEL_PATH). Models are gitignored (*.onnx) and have no in-test skip,
+          # so they are excluded via ctest when the model is absent. They are still compiled.
+          ctest_args=()
+          if [[ ! -f models/yolov8n.onnx ]]; then
+            echo "::warning::models/yolov8n.onnx not present; skipping test_ort_session and test_yolo_detector"
+            ctest_args=(--ctest-args -E "^(test_ort_session|test_yolo_detector)$")
+          fi
+          colcon test --event-handlers console_direct+ \
+            --packages-select ${SEMNAV_PACKAGES} "${ctest_args[@]}"
+          # Non-zero exit on any failed test, which fails the job.
+          colcon test-result --verbose
