@@ -159,7 +159,9 @@ Open questions blocking a phase are listed in docs/DECISIONS.md (D-xx).
 - [x] Own navigation launch without velocity_smoother; controller and behavior_server remapped to
       /cmd_vel_nav; gate is the only /cmd_vel publisher (D-01, D-02) - verified 2026-10-03:
       /cmd_vel publishers = safety_gate_node only; relay off by default (debug arg)
-- [ ] semnav_bringup: one launch file starts Gazebo, Nav2, perception, fusion, gate, RViz
+- [x] semnav_bringup: one launch file starts Gazebo, Nav2, perception, fusion, gate, RViz
+      (launch/semnav.launch.py; AMCL initial pose set automatically; verified headless 2026-10-03;
+      RViz path untested - user verifies the final demo)
 
 **Done when:** One command starts the full system.
 

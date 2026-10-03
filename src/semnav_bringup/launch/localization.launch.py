@@ -21,7 +21,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
-from launch_ros.descriptions import ParameterFile
+from launch_ros.descriptions import ParameterFile, ParameterValue
 from nav2_common.launch import RewrittenYaml
 
 
@@ -35,6 +35,10 @@ def generate_launch_description():
     params_file = LaunchConfiguration('params_file')
     use_respawn = LaunchConfiguration('use_respawn')
     log_level = LaunchConfiguration('log_level')
+    set_initial_pose = LaunchConfiguration('set_initial_pose')
+    initial_x = LaunchConfiguration('initial_x')
+    initial_y = LaunchConfiguration('initial_y')
+    initial_yaw = LaunchConfiguration('initial_yaw')
 
     lifecycle_nodes = ['map_server', 'amcl']
 
@@ -65,6 +69,12 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'use_respawn', default_value='false', description='Respawn nodes that crash'),
         DeclareLaunchArgument('log_level', default_value='info', description='Log level'),
+        DeclareLaunchArgument(
+            'set_initial_pose', default_value='false',
+            description='AMCL starts at initial_x/y/yaw (no /initialpose needed)'),
+        DeclareLaunchArgument('initial_x', default_value='-2.0', description='Initial x (m, map)'),
+        DeclareLaunchArgument('initial_y', default_value='-0.5', description='Initial y (m, map)'),
+        DeclareLaunchArgument('initial_yaw', default_value='0.0', description='Initial yaw (rad)'),
     ]
 
     # D-20: CycloneDDS for every SemNav process (Fast DDS lost TF between Nav2 servers).
@@ -94,7 +104,11 @@ def generate_launch_description():
             output='screen',
             respawn=use_respawn,
             respawn_delay=2.0,
-            parameters=[configured_params],
+            parameters=[configured_params, {
+                'set_initial_pose': ParameterValue(set_initial_pose, value_type=bool),
+                'initial_pose.x': ParameterValue(initial_x, value_type=float),
+                'initial_pose.y': ParameterValue(initial_y, value_type=float),
+                'initial_pose.yaw': ParameterValue(initial_yaw, value_type=float)}],
             arguments=['--ros-args', '--log-level', log_level],
             remappings=remappings),
         Node(
