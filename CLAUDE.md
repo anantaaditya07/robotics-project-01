@@ -24,10 +24,11 @@ Never run sudo. If something needs sudo, tell me the exact command and I will ru
 9. Commit with a clear message when the phase's "done when" conditions pass.
 
 ## Git rules
-- Work on a branch per phase (e.g. phase-4-yolo-node). Never commit directly to main.
-- Commit after every working slice (builds + tests pass), with a specific message.
+- Single branch: main. Do not create other branches.
+- Commit to main after every working slice (builds + tests pass), with a specific message.
 - Never commit a failing build, secrets, models (*.onnx), or build/install/log folders.
-- Do not push, rebase, or force anything. I will push and merge myself.
+- Before any large or risky change, make sure the current working state is committed.
+- Do not push, rebase, amend, or force anything. I will push and tag myself.
 
 ## Completion report (end every task with this)
 Files changed | Commands run and results | Tests added/passed | Failures or unresolved issues |
