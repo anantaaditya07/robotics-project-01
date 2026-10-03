@@ -81,7 +81,7 @@ Open questions blocking a phase are listed in docs/DECISIONS.md (D-xx).
 ## Phase 3 (Day 3) - Messages + minimal YOLO node
 - [ ] `scripts/setup_ort.sh` fetches pinned ONNX Runtime into third_party/onnxruntime
 - [ ] Hello-world Ort::Session builds and runs before any ROS code (risk mitigation, section 11)
-- [ ] `semnav_msgs`: SemanticObstacle.msg, SemanticObstacleArray.msg exactly as section 6
+- [x] `semnav_msgs`: SemanticObstacle.msg, SemanticObstacleArray.msg exactly as section 6 (2026-10-03, builds warning-free)
 - [ ] `semnav_perception`: header-only letterbox.hpp / yolo_detector.hpp (no ROS)
 - [ ] yolo_onnx_node: subscribe /camera/image_raw (SensorData), infer, publish
       /detections (vision_msgs/Detection2DArray, reliable depth 5, stamp copied from image)

@@ -366,3 +366,30 @@ by mapping.launch.py; use `rviz_software_gl:=true` on this machine.
   GLSL linker), but the map renders and the scan lies on the map walls; slam pose vs ground truth
   <= 0.001 m / 0.2 deg, 63-99 % of scan endpoints on occupied cells (+-1 cell).
 - RViz frame rate 14 fps with software GL (31 fps hardware).
+
+## D-18 Phase 5 requested before Phase 3/4 prerequisites exist  - ACCEPTED
+
+**Task (2026-10-03):** Phase 5 semantic_fusion_node in semnav_perception, publishing
+/semantic_obstacles (semnav_msgs/SemanticObstacleArray), verified with sim + localization +
+yolo node running.
+
+**Finding:** none of the Phase 3 deliverables exist: no `semnav_msgs` package, no
+`semnav_perception` package, no ONNX Runtime in third_party/ (`scripts/setup_ort.sh` not written,
+ORT version not pinned, D-12), no yolo_onnx_node. Phase 5 needs the message package to publish and
+the yolo node (/detections, vision_msgs/Detection2DArray) to verify.
+
+**Options**
+- A. Build Phase 3 first (setup_ort.sh with a pinned ORT CPU release, download needs network;
+  semnav_msgs exactly as section 6; letterbox/yolo_detector headers + tests; minimal
+  yolo_onnx_node), commit, then Phase 5 as requested. Phase 4 hardening stays for later.
+- B. Pull only semnav_msgs + the semnav_perception skeleton forward; build Phase 5 fully, but
+  verify with a stand-in detector: a script that projects /gazebo/model_states person/chair into
+  the camera (camera_info + TF) and publishes Detection2DArray. Real-YOLO verification after Phase 3.
+- C. Only the ROS-free fusion.hpp / tracker.hpp + GoogleTests now (in a new semnav_perception
+  package); node after Phase 3.
+
+**Final (accepted 2026-10-03):** A, extended: Phase 3 and Phase 4 to full spec first
+(setup_ort.sh with pinned ORT CPU, semnav_msgs, letterbox/decode/NMS headers + GoogleTests,
+yolo_onnx_node with newest-frame buffer + worker thread, /detections, /detections/image,
+/metrics p50/p95 (D-09), class_filter default [person, chair] (D-15)), one commit per green
+slice; then Phase 5 as specified, verified with the real YOLO node.
