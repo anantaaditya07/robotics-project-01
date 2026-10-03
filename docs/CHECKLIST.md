@@ -79,8 +79,8 @@ Open questions blocking a phase are listed in docs/DECISIONS.md (D-xx).
 **Done when:** Robot reaches a goal; YOLO detects at least one object class in sim.
 
 ## Phase 3 (Day 3) - Messages + minimal YOLO node
-- [ ] `scripts/setup_ort.sh` fetches pinned ONNX Runtime into third_party/onnxruntime
-- [ ] Hello-world Ort::Session builds and runs before any ROS code (risk mitigation, section 11)
+- [x] `scripts/setup_ort.sh` fetches pinned ONNX Runtime into third_party/onnxruntime (1.20.1 CPU, SHA-256 verified, D-12)
+- [x] Hello-world Ort::Session builds and runs before any ROS code (risk mitigation, section 11) - test_ort_session: 3/3 pass
 - [x] `semnav_msgs`: SemanticObstacle.msg, SemanticObstacleArray.msg exactly as section 6 (2026-10-03, builds warning-free)
 - [ ] `semnav_perception`: header-only letterbox.hpp / yolo_detector.hpp (no ROS)
 - [ ] yolo_onnx_node: subscribe /camera/image_raw (SensorData), infer, publish

@@ -246,6 +246,13 @@ models/, scripts/, third_party/ at root). Build/install/log are already gitignor
 **Final (accepted 2026-10-03):** as recommended. Project `.venv` (gitignored) with `onnxruntime`
 and `ultralytics`, created when Phase 2 starts. ORT C++ version pinned in Phase 3.
 
+**Pin (2026-10-03, Phase 3):** ONNX Runtime **1.20.1** CPU x64 release tarball
+(`onnxruntime-linux-x64-1.20.1.tgz`, SHA-256
+`67db4dc1561f1e3fd42e619575c82c601ef89849afc7ea85a003abbac1a1a105`), fetched and verified by
+`scripts/setup_ort.sh` into `third_party/onnxruntime` (gitignored). semnav_perception imports it as
+`onnxruntime::onnxruntime` and installs the .so into its lib/. No CUDA provider in this build
+(use_cuda falls back to CPU with a warning).
+
 ---
 
 ## D-13 Safety gate cone direction follows sign of linear.x  - ACCEPTED (deviation from PDF)
