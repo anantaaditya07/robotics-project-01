@@ -51,6 +51,13 @@ if(BUILD_TESTING)
   target_link_libraries(test_ort_session onnxruntime::onnxruntime)
   target_compile_definitions(test_ort_session PRIVATE
     SEMNAV_TEST_MODEL_PATH="${SEMNAV_MODEL_PATH}")
+
+  # ROS-free pre/post-processing (architecture 7.1 tests).
+  foreach(t test_letterbox test_yolo_decode)
+    ament_add_gtest(${t} test/${t}.cpp)
+    target_include_directories(${t} PRIVATE include)
+    target_link_libraries(${t} ${OpenCV_LIBS})
+  endforeach()
 endif()
 
 ament_package()

@@ -82,7 +82,8 @@ Open questions blocking a phase are listed in docs/DECISIONS.md (D-xx).
 - [x] `scripts/setup_ort.sh` fetches pinned ONNX Runtime into third_party/onnxruntime (1.20.1 CPU, SHA-256 verified, D-12)
 - [x] Hello-world Ort::Session builds and runs before any ROS code (risk mitigation, section 11) - test_ort_session: 3/3 pass
 - [x] `semnav_msgs`: SemanticObstacle.msg, SemanticObstacleArray.msg exactly as section 6 (2026-10-03, builds warning-free)
-- [ ] `semnav_perception`: header-only letterbox.hpp / yolo_detector.hpp (no ROS)
+- [x] `semnav_perception`: header-only letterbox.hpp / yolo_detector.hpp (no ROS) - letterbox, blob, decode,
+      per-class NMS, names parser, class mask; parity with scripts/check_yolo_on_frames.py
 - [ ] yolo_onnx_node: subscribe /camera/image_raw (SensorData), infer, publish
       /detections (vision_msgs/Detection2DArray, reliable depth 5, stamp copied from image)
       and /detections/image (annotated, best effort)
@@ -95,7 +96,8 @@ Open questions blocking a phase are listed in docs/DECISIONS.md (D-xx).
 - [ ] Parameters: model_path, conf_threshold (0.35), iou_threshold (0.45), input_size, class_filter (default [person, chair], D-15),
       use_cuda, publish_annotated
 - [ ] Stage timing (preprocess/infer/postprocess), rolling p50/p95 logged every 5 s, published on /metrics (D-09)
-- [ ] GoogleTest: letterbox round-trip within 1 px; decode on synthetic [1,84,8400] tensor; NMS removes duplicate
+- [x] GoogleTest: letterbox round-trip within 1 px; decode on synthetic [1,84,8400] tensor; NMS removes duplicate
+      (test_letterbox 19, test_yolo_decode 16)
 
 **Done when:** p50/p95 reported; unit tests green.
 
