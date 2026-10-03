@@ -337,4 +337,18 @@ inline Result fuse(double u_min, double u_max, const Intrinsics& k, const Transf
   return res;
 }
 
+/// D-25 negative evidence: is a point (camera OPTICAL frame: x right, y down, z forward) where
+/// the camera and LiDAR could see it? True if z > 0, its image column u = fx * x / z + cx lies in
+/// [margin_px, width - margin_px], and its horizontal range hypot(x, z) is in [min_range,
+/// max_range]. Vertical extent is not checked (the 2D LiDAR defines the relevant height).
+inline bool pointInView(double x, double z, const Intrinsics& k, double width_px, double margin_px,
+                        double min_range, double max_range) {
+  if (!(z > 0.0) || !(k.fx > 0.0) || !std::isfinite(x) || !std::isfinite(z)) {
+    return false;
+  }
+  const double u = k.fx * x / z + k.cx;
+  const double r = std::hypot(x, z);
+  return u >= margin_px && u <= width_px - margin_px && r >= min_range && r <= max_range;
+}
+
 }  // namespace semnav_perception::fusion

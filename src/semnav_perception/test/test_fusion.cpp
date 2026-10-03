@@ -579,3 +579,20 @@ TEST(FusionCluster, BadClusterParamsThrow) {
   EXPECT_THROW(fu::fuse(200, 300, simCamera(), forwardCamera(), tb3Scan(), ranges, 0.0, p),
                std::invalid_argument);
 }
+
+// ---------------------------------------------------------------- D-25 view test
+
+TEST(FusionView, PointInView) {
+  // Sim camera fx 565.6, cx 320.5, width 640, margin 40 -> u in [40, 600].
+  const fu::Intrinsics k = simCamera();
+  // Straight ahead at 2 m: u = cx = 320.5, range 2.0 -> in view.
+  EXPECT_TRUE(fu::pointInView(0.0, 2.0, k, 640.0, 40.0, 0.12, 3.5));
+  // Behind the camera.
+  EXPECT_FALSE(fu::pointInView(0.0, -2.0, k, 640.0, 40.0, 0.12, 3.5));
+  // x = 1.0 at z = 2: u = 565.6 * 0.5 + 320.5 = 603.3 > 600 -> outside (margin).
+  EXPECT_FALSE(fu::pointInView(1.0, 2.0, k, 640.0, 40.0, 0.12, 3.5));
+  // x = 0.9 at z = 2: u = 565.6 * 0.45 + 320.5 = 575.0 -> inside.
+  EXPECT_TRUE(fu::pointInView(0.9, 2.0, k, 640.0, 40.0, 0.12, 3.5));
+  // Beyond LiDAR range: hypot(0, 4) = 4 > 3.5.
+  EXPECT_FALSE(fu::pointInView(0.0, 4.0, k, 640.0, 40.0, 0.12, 3.5));
+}

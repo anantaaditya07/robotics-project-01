@@ -17,11 +17,11 @@ namespace {
 
 constexpr double kTol = 1e-12;
 
-sp::TrackerParams makeParams(double gate = 0.6, double alpha = 0.5, double ttl = 2.0) {
+sp::TrackerParams makeParams(double gate = 0.6, double alpha = 0.5, double max_age = 2.0) {
   sp::TrackerParams p;
   p.assoc_gate = gate;
   p.smoothing_alpha = alpha;
-  p.ttl = ttl;
+  p.max_age = max_age;
   return p;
 }
 
@@ -51,7 +51,8 @@ TEST(TrackerParams, DefaultsMatchDocumentedValues) {
   const sp::TrackerParams p;
   EXPECT_DOUBLE_EQ(p.assoc_gate, 0.6);
   EXPECT_DOUBLE_EQ(p.smoothing_alpha, 0.5);
-  EXPECT_DOUBLE_EQ(p.ttl, 2.0);
+  EXPECT_DOUBLE_EQ(p.max_age, 120.0);
+  EXPECT_EQ(p.miss_frames, 10U);
   EXPECT_NO_THROW(sp::Tracker{p});
 }
 
@@ -125,18 +126,20 @@ TEST(Tracker, ExponentialSmoothingMath) {
 }
 
 TEST(Tracker, DistanceGate) {
+  // Every unmatched update counts as a miss here (pre-D-25 semantics for the miss checks).
+  const auto all = [](const sp::Track&) { return true; };
   {
     sp::Tracker tr(makeParams());
-    tr.update({obs("person", 0.0, 0.0)}, 0.0);
-    auto out = tr.update({obs("person", 0.59, 0.0)}, 0.1);
+    tr.update({obs("person", 0.0, 0.0)}, 0.0, all);
+    auto out = tr.update({obs("person", 0.59, 0.0)}, 0.1, all);
     ASSERT_EQ(out.size(), 1u);
     EXPECT_EQ(out[0].id, 1u);
     EXPECT_EQ(out[0].hits, 2u);
   }
   {
     sp::Tracker tr(makeParams());
-    tr.update({obs("person", 0.0, 0.0)}, 0.0);
-    auto out = tr.update({obs("person", 0.61, 0.0)}, 0.1);
+    tr.update({obs("person", 0.0, 0.0)}, 0.0, all);
+    auto out = tr.update({obs("person", 0.61, 0.0)}, 0.1, all);
     ASSERT_EQ(out.size(), 2u);
     EXPECT_EQ(out[0].id, 1u);
     EXPECT_EQ(out[0].misses, 1u);
@@ -147,16 +150,18 @@ TEST(Tracker, DistanceGate) {
   {
     // Gate is Euclidean, not per-axis: (0.36, 0.47) is ~0.592 m away -> associates.
     sp::Tracker tr(makeParams(0.6, 0.5, 2.0));
-    tr.update({obs("person", 0.0, 0.0)}, 0.0);
-    auto out = tr.update({obs("person", 0.36, 0.47)}, 0.1);
+    tr.update({obs("person", 0.0, 0.0)}, 0.0, all);
+    auto out = tr.update({obs("person", 0.36, 0.47)}, 0.1, all);
     ASSERT_EQ(out.size(), 1u);
     EXPECT_EQ(out[0].id, 1u);
   }
 }
 
 TEST(Tracker, DifferentClassesNeverAssociate) {
+  // Every unmatched update counts as a miss here (pre-D-25 semantics for the miss checks).
+  const auto all = [](const sp::Track&) { return true; };
   sp::Tracker tr(makeParams());
-  auto out = tr.update({obs("person", 1.0, 1.0), obs("chair", 1.0, 1.0)}, 0.0);
+  auto out = tr.update({obs("person", 1.0, 1.0), obs("chair", 1.0, 1.0)}, 0.0, all);
   ASSERT_EQ(out.size(), 2u);
   EXPECT_EQ(out[0].id, 1u);
   EXPECT_EQ(out[0].class_name, "person");
@@ -164,7 +169,7 @@ TEST(Tracker, DifferentClassesNeverAssociate) {
   EXPECT_EQ(out[1].class_name, "chair");
 
   // Same spot again, listed in the other order: each class keeps its id.
-  out = tr.update({obs("chair", 1.0, 1.0), obs("person", 1.0, 1.0)}, 0.1);
+  out = tr.update({obs("chair", 1.0, 1.0), obs("person", 1.0, 1.0)}, 0.1, all);
   ASSERT_EQ(out.size(), 2u);
   EXPECT_EQ(out[0].class_name, "person");
   EXPECT_EQ(out[0].hits, 2u);
@@ -173,7 +178,7 @@ TEST(Tracker, DifferentClassesNeverAssociate) {
 
   // Only a chair right on top of the person track: the person misses, and a
   // chair track is matched rather than the person track.
-  out = tr.update({obs("chair", 1.0, 1.0)}, 0.2);
+  out = tr.update({obs("chair", 1.0, 1.0)}, 0.2, all);
   ASSERT_EQ(out.size(), 2u);
   EXPECT_EQ(out[0].misses, 1u);
   EXPECT_EQ(out[1].misses, 0u);
@@ -181,14 +186,16 @@ TEST(Tracker, DifferentClassesNeverAssociate) {
 }
 
 TEST(Tracker, GlobalGreedyPicksNearestPairFirst) {
+  // Every unmatched update counts as a miss here (pre-D-25 semantics for the miss checks).
+  const auto all = [](const sp::Track&) { return true; };
   // Tracks A=(0,0) id1, B=(0.5,0) id2. Observations o1=(0.35,0), o2=(0.9,0).
   // Gated pairs: B-o1 0.15, A-o1 0.35, B-o2 0.40 (A-o2 0.9 is out of gate).
   // Greedy accepts B-o1 first; A-o1 and B-o2 are then blocked. So A misses and
   // o2 spawns id 3. (Track-ordered NN would give A-o1, B-o2; Hungarian would
   // too. This test pins the documented greedy behaviour.)
   sp::Tracker tr(makeParams(0.6, 1.0, 2.0));
-  tr.update({obs("person", 0.0, 0.0), obs("person", 0.5, 0.0)}, 0.0);
-  auto out = tr.update({obs("person", 0.35, 0.0), obs("person", 0.9, 0.0)}, 0.1);
+  tr.update({obs("person", 0.0, 0.0), obs("person", 0.5, 0.0)}, 0.0, all);
+  auto out = tr.update({obs("person", 0.35, 0.0), obs("person", 0.9, 0.0)}, 0.1, all);
   ASSERT_EQ(out.size(), 3u);
   const sp::Track* a = findById(out, 1);
   const sp::Track* b = findById(out, 2);
@@ -221,19 +228,21 @@ TEST(Tracker, TwoCloseObjectsKeepIdsWhenListOrderSwaps) {
 }
 
 TEST(Tracker, TtlBoundary) {
-  // ttl = 2: now - last_seen == 2 keeps the track, > 2 expires it.
+  // Every unmatched update counts as a miss here (pre-D-25 semantics for the miss checks).
+  const auto all = [](const sp::Track&) { return true; };
+  // max_age = 2: now - last_seen == 2 keeps the track, > 2 expires it.
   sp::Tracker tr(makeParams(0.6, 0.5, 2.0));
-  tr.update({obs("person", 0.0, 0.0)}, 1.0);
-  auto out = tr.update({}, 3.0);  // exactly 2.0 s
+  tr.update({obs("person", 0.0, 0.0)}, 1.0, all);
+  auto out = tr.update({}, 3.0, all);  // exactly 2.0 s
   ASSERT_EQ(out.size(), 1u);
   EXPECT_EQ(out[0].misses, 1u);
-  out = tr.update({}, 3.25);  // 2.25 s
+  out = tr.update({}, 3.25, all);  // 2.25 s
   EXPECT_TRUE(out.empty());
   EXPECT_TRUE(tr.tracks().empty());
 
   // Standalone expire() follows the same rule.
   sp::Tracker tr2(makeParams(0.6, 0.5, 2.0));
-  tr2.update({obs("chair", 0.0, 0.0)}, 1.0);
+  tr2.update({obs("chair", 0.0, 0.0)}, 1.0, all);
   tr2.expire(3.0);
   EXPECT_EQ(tr2.tracks().size(), 1u);
   tr2.expire(3.0625);
@@ -263,16 +272,17 @@ TEST(Tracker, IdsNotReusedAfterExpiry) {
 
 TEST(Tracker, MissCounterIncrementsAndResets) {
   sp::Tracker tr(makeParams());
+  const auto all = [](const sp::Track&) { return true; };  // every miss is negative evidence
   tr.update({obs("person", 0.0, 0.0)}, 0.0);
-  auto out = tr.update({}, 0.1);
+  auto out = tr.update({}, 0.1, all);
   EXPECT_EQ(out[0].misses, 1u);
-  out = tr.update({obs("person", 3.0, 3.0)}, 0.2);  // far away: still a miss for id 1
+  out = tr.update({obs("person", 3.0, 3.0)}, 0.2, all);  // far away: still a miss for id 1
   EXPECT_EQ(findById(out, 1)->misses, 2u);
   EXPECT_EQ(findById(out, 2)->misses, 0u);
-  out = tr.update({}, 0.3);
+  out = tr.update({}, 0.3, all);
   EXPECT_EQ(findById(out, 1)->misses, 3u);
   EXPECT_EQ(findById(out, 2)->misses, 1u);
-  out = tr.update({obs("person", 0.1, 0.0)}, 0.4);
+  out = tr.update({obs("person", 0.1, 0.0)}, 0.4, all);
   EXPECT_EQ(findById(out, 1)->misses, 0u);
   EXPECT_EQ(findById(out, 1)->hits, 2u);
   EXPECT_EQ(findById(out, 2)->misses, 2u);
@@ -290,7 +300,7 @@ TEST(Tracker, OutOfOrderStampDoesNotRewindLastSeen) {
   EXPECT_DOUBLE_EQ(out[0].last_seen, 5.0);
   EXPECT_DOUBLE_EQ(out[0].first_seen, 5.0);
   EXPECT_EQ(out[0].hits, 2u);
-  // TTL measured from the max stamp: 7.0 - 5.0 == ttl keeps it.
+  // Age measured from the max stamp: 7.0 - 5.0 == max_age keeps it.
   out = tr.update({}, 7.0);
   EXPECT_EQ(out.size(), 1u);
 }
@@ -322,13 +332,93 @@ TEST(Tracker, OutputSortedByIdAndMatchesTracks) {
 }
 
 TEST(Tracker, NonFiniteObservationsIgnored) {
+  // Every unmatched update counts as a miss here (pre-D-25 semantics for the miss checks).
+  const auto all = [](const sp::Track&) { return true; };
   sp::Tracker tr(makeParams());
   const double nan = std::numeric_limits<double>::quiet_NaN();
-  auto out = tr.update({obs("person", nan, 0.0), obs("person", 0.0, 0.0)}, 0.0);
+  auto out = tr.update({obs("person", nan, 0.0), obs("person", 0.0, 0.0)}, 0.0, all);
   ASSERT_EQ(out.size(), 1u);
   EXPECT_EQ(out[0].id, 1u);
-  out = tr.update({obs("person", 0.0, std::numeric_limits<double>::infinity())}, 0.1);
+  out = tr.update({obs("person", 0.0, std::numeric_limits<double>::infinity())}, 0.1, all);
   ASSERT_EQ(out.size(), 1u);
   EXPECT_EQ(out[0].misses, 1u);
   EXPECT_NEAR(out[0].x, 0.0, kTol);
+}
+
+// ---------------------------------------------------------------- D-25 negative evidence
+
+TEST(TrackerD25, InViewTrackExpiresAfterMissFrames) {
+  // miss_frames 3: three observable empty updates remove the track; two do not.
+  sp::TrackerParams p = makeParams(0.6, 0.5, 120.0);
+  p.miss_frames = 3;
+  sp::Tracker tr(p);
+  const auto in_view = [](const sp::Track&) { return true; };
+  tr.update({obs("person", 1.0, 0.0)}, 0.0);
+  EXPECT_EQ(tr.update({}, 0.1, in_view).size(), 1u);  // misses 1
+  EXPECT_EQ(tr.update({}, 0.2, in_view).size(), 1u);  // misses 2
+  EXPECT_TRUE(tr.update({}, 0.3, in_view).empty());   // misses 3 -> removed
+}
+
+TEST(TrackerD25, OutOfViewTrackPersistsUntilMaxAge) {
+  // Not observable: no misses accumulate however many frames pass; only max_age (10 s) removes.
+  sp::TrackerParams p = makeParams(0.6, 0.5, 10.0);
+  p.miss_frames = 2;
+  sp::Tracker tr(p);
+  const auto out_of_view = [](const sp::Track&) { return false; };
+  tr.update({obs("person", 1.0, 0.0)}, 0.0);
+  for (int i = 1; i <= 100; ++i) {  // 100 frames over 10 s
+    const auto out = tr.update({}, 0.1 * i, out_of_view);
+    ASSERT_EQ(out.size(), 1u) << "frame " << i;
+    EXPECT_EQ(out[0].misses, 0u);
+  }
+  EXPECT_TRUE(tr.update({}, 10.05, out_of_view).empty());  // 10.05 - 0 > max_age 10
+}
+
+TEST(TrackerD25, MaxAgeRemovesEvenWithoutPredicate) {
+  sp::Tracker tr(makeParams(0.6, 0.5, 120.0));
+  tr.update({obs("chair", 0.0, 0.0)}, 0.0);
+  EXPECT_EQ(tr.update({}, 120.0).size(), 1u);  // == max_age keeps
+  EXPECT_TRUE(tr.update({}, 120.5).empty());   // > max_age removes
+}
+
+TEST(TrackerD25, LeavingViewKeepsMissCountAndRedetectionResetsIt) {
+  // Two in-view misses, then out of view (count frozen at 2), then back in view: one more miss
+  // reaches miss_frames 3. A re-detection in between would reset the count to 0.
+  sp::TrackerParams p = makeParams(0.6, 0.5, 120.0);
+  p.miss_frames = 3;
+  sp::Tracker tr(p);
+  bool visible = true;
+  const auto pred = [&visible](const sp::Track&) { return visible; };
+  tr.update({obs("person", 1.0, 0.0)}, 0.0);
+  tr.update({}, 0.1, pred);
+  tr.update({}, 0.2, pred);
+  visible = false;
+  auto out = tr.update({}, 0.3, pred);
+  ASSERT_EQ(out.size(), 1u);
+  EXPECT_EQ(out[0].misses, 2u);
+  out = tr.update({obs("person", 1.05, 0.0)}, 0.4, pred);  // re-detected while "out of view"
+  EXPECT_EQ(out[0].misses, 0u);
+  visible = true;
+  for (int i = 0; i < 2; ++i) {
+    EXPECT_EQ(tr.update({}, 0.5 + 0.1 * i, pred).size(), 1u);
+  }
+  EXPECT_TRUE(tr.update({}, 0.8, pred).empty());
+}
+
+TEST(TrackerD25, PredicateIsPerTrack) {
+  // Only the track the predicate marks observable accumulates misses.
+  sp::TrackerParams p = makeParams(0.6, 0.5, 120.0);
+  p.miss_frames = 1;
+  sp::Tracker tr(p);
+  tr.update({obs("person", 1.0, 0.0), obs("chair", 5.0, 0.0)}, 0.0);
+  const auto only_person = [](const sp::Track& t) { return t.class_name == "person"; };
+  const auto out = tr.update({}, 0.1, only_person);
+  ASSERT_EQ(out.size(), 1u);
+  EXPECT_EQ(out[0].class_name, "chair");
+}
+
+TEST(TrackerD25, BadMissFramesThrows) {
+  sp::TrackerParams p = makeParams();
+  p.miss_frames = 0;
+  EXPECT_THROW(sp::Tracker{p}, std::invalid_argument);
 }

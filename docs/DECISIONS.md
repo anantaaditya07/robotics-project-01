@@ -592,3 +592,17 @@ tooling, not a robot node, so it lives in scripts/ like auto_map.py: `scripts/ru
 (A/B launcher), `scripts/eval_run.py` (NavigateToPose goal loop + metrics from
 /gazebo/model_states, /semantic_obstacles, /metrics), `scripts/eval_summary.py` (CSV ->
 docs/results.md). No robot-side behaviour depends on it.
+
+## D-25 Negative-evidence track expiry instead of a pure 2 s TTL  - ACCEPTED (user, 2026-10-03)
+
+**Why:** the Phase 8 A/B showed no effect of the semantic layer; a person track vanished 2 s
+after leaving the camera view (PDF 7.2 ttl), so routes planned while the person was out of view
+ignored it. **Change (deviation from 7.2 "obstacle expires after ttl"):** a track is removed only
+(a) after `miss_frames` (10) consecutive frames in which it was observable and unmatched -
+observable = frame fully fused (camera_info, scan within slop, all TF), track projects inside the
+image (`fov_margin_px` 40) and within LiDAR range, and its class was not detected-but-unfused in
+that frame - or (b) when not matched for `max_age` (120 s). Out of view, misses neither count nor
+reset. `ttl` (2 s) remains only the lifetime stamped on published obstacles/markers, which are
+republished every frame. Pure logic: tracker.hpp (ObservableFn predicate), fusion::pointInView.
+Tests: 6 new tracker tests (in-view expiry, out-of-view persistence, max_age, per-track predicate,
+miss count frozen out of view), 1 view test.

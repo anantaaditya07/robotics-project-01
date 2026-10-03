@@ -2,7 +2,7 @@
 //
 // "Nearest-neighbour association by class and distance gate (0.6 m), exponential
 // smoothing of position, id assignment, miss counter; obstacle expires after ttl
-// (default 2 s) so ghosts vanish."
+// (default 2 s) so ghosts vanish." -- expiry replaced by negative evidence (D-25), see below.
 //
 // ROS-free, header-only, plain STL. All positions are in the map frame, metres;
 // all stamps are seconds (the node converts rclcpp::Time to double).
@@ -22,14 +22,15 @@
 //    are taken from the latest observation (not smoothed); last_seen =
 //    max(last_seen, stamp); hits++; misses = 0.
 //  * Unmatched track (survived expiry, but no observation in this update):
-//    misses++. An update with an empty observation list counts as a miss for
-//    every track.
+//    misses++ only if the caller's `observable` predicate says so (in view, in
+//    range, frame fused); a track reaching miss_frames misses is removed (D-25).
+//    Without a predicate no update counts as a miss.
 //  * Unmatched observation: a new track with the next id. Ids start at 1,
 //    increase monotonically and are never reused, not even after reset().
 //    uint32 wrap-around (4e9 tracks) is not a concern for this application.
 //  * Observations with non-finite x or y are ignored (they cannot be gated).
-//  * Expiry: a track is removed when now - last_seen > ttl (strictly greater;
-//    now - last_seen == ttl keeps the track). update() runs expire(stamp)
+//  * Age expiry: a track is removed when now - last_seen > max_age (strictly
+//    greater; == max_age keeps the track). update() runs expire(stamp)
 //    BEFORE association, so a track that has already timed out cannot be
 //    revived by a late observation; that observation spawns a new id instead.
 //  * Out-of-order stamps: last_seen never moves backwards. A match with a stamp
@@ -42,6 +43,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <stdexcept>
 #include <string>
 #include <tuple>
@@ -50,7 +52,13 @@
 namespace semnav_perception {
 
 /// Tunables; the node fills these from ROS parameters (assoc_gate,
-/// smoothing_alpha, ttl). The in-struct values are only documented defaults.
+/// smoothing_alpha, miss_frames, max_age). The in-struct values are only documented defaults.
+///
+/// Expiry (D-25, replaces the pure 2 s TTL of architecture 7.2): negative evidence only.
+/// A track is removed when it was OBSERVABLE (the caller's predicate: inside the camera view and
+/// LiDAR range, in a frame that was actually fused) and unmatched for `miss_frames` consecutive
+/// observable updates. Updates where it is not observable neither count nor reset its misses.
+/// Independently, any track not matched for more than `max_age` seconds is removed.
 struct TrackerParams {
   /// Max distance [m] between a track and an observation of the same class for
   /// them to be associated. Default 0.6 m per architecture 7.2.
@@ -58,13 +66,14 @@ struct TrackerParams {
   /// Exponential smoothing weight of the NEW observation, in (0, 1]. 1.0
   /// disables smoothing. The PDF gives no value; 0.5 is our documented default.
   double smoothing_alpha{0.5};
-  /// Time [s] since last_seen after which a track is dropped. Default 2 s per
-  /// architecture 7.2.
-  double ttl{2.0};
+  /// Consecutive observable-but-unmatched updates after which a track is dropped (>= 1).
+  uint32_t miss_frames{10};
+  /// Time [s] since last_seen after which a track is dropped regardless of visibility.
+  double max_age{120.0};
 };
 
 /// Throws std::invalid_argument unless assoc_gate > 0 (finite),
-/// 0 < smoothing_alpha <= 1 and ttl > 0 (finite). NaN is rejected.
+/// 0 < smoothing_alpha <= 1, miss_frames >= 1 and max_age > 0 (finite). NaN is rejected.
 inline void validate(const TrackerParams& p) {
   if (!(p.assoc_gate > 0.0) || !std::isfinite(p.assoc_gate)) {
     throw std::invalid_argument("TrackerParams: assoc_gate must be finite and > 0");
@@ -72,8 +81,11 @@ inline void validate(const TrackerParams& p) {
   if (!(p.smoothing_alpha > 0.0) || !(p.smoothing_alpha <= 1.0)) {
     throw std::invalid_argument("TrackerParams: smoothing_alpha must be in (0, 1]");
   }
-  if (!(p.ttl > 0.0) || !std::isfinite(p.ttl)) {
-    throw std::invalid_argument("TrackerParams: ttl must be finite and > 0");
+  if (p.miss_frames < 1) {
+    throw std::invalid_argument("TrackerParams: miss_frames must be >= 1");
+  }
+  if (!(p.max_age > 0.0) || !std::isfinite(p.max_age)) {
+    throw std::invalid_argument("TrackerParams: max_age must be finite and > 0");
   }
 }
 
@@ -97,8 +109,11 @@ struct Track {
   double first_seen{0.0};  ///< [s]
   double last_seen{0.0};   ///< [s], monotonic non-decreasing
   uint32_t hits{0};        ///< number of observations absorbed (1 at creation)
-  uint32_t misses{0};      ///< consecutive updates without a match
+  uint32_t misses{0};      ///< consecutive OBSERVABLE updates without a match
 };
+
+/// Returns true if an unmatched track counts as negative evidence in this update (D-25).
+using ObservableFn = std::function<bool(const Track&)>;
 
 class Tracker {
  public:
@@ -108,7 +123,10 @@ class Tracker {
 
   /// Expire stale tracks at `stamp_sec`, associate `observations`, update or
   /// create tracks, and return the current tracks sorted by id.
-  std::vector<Track> update(const std::vector<Observation>& observations, double stamp_sec) {
+  /// `observable` (may be empty) says, per track, whether a miss in this update is negative
+  /// evidence. Empty = no track is observable (only max_age can remove tracks).
+  std::vector<Track> update(const std::vector<Observation>& observations, double stamp_sec,
+                            const ObservableFn& observable = {}) {
     expire(stamp_sec);
 
     // Gated candidate pairs: (squared distance, track index, observation index).
@@ -154,10 +172,14 @@ class Tracker {
     }
 
     for (std::size_t ti = 0; ti < tracks_.size(); ++ti) {
-      if (!track_used[ti]) {
+      if (!track_used[ti] && observable && observable(tracks_[ti])) {
         ++tracks_[ti].misses;
       }
     }
+    const uint32_t miss_limit = params_.miss_frames;
+    tracks_.erase(std::remove_if(tracks_.begin(), tracks_.end(),
+                                 [miss_limit](const Track& t) { return t.misses >= miss_limit; }),
+                  tracks_.end());
 
     // New tracks get increasing ids and are appended, so tracks_ stays sorted.
     for (std::size_t oi = 0; oi < observations.size(); ++oi) {
@@ -185,13 +207,14 @@ class Tracker {
   /// Current tracks, sorted by ascending id.
   const std::vector<Track>& tracks() const { return tracks_; }
 
-  /// Remove every track with now_sec - last_seen > ttl.
+  /// Remove every track with now_sec - last_seen > max_age.
   void expire(double now_sec) {
-    const double ttl = params_.ttl;
-    tracks_.erase(
-        std::remove_if(tracks_.begin(), tracks_.end(),
-                       [now_sec, ttl](const Track& t) { return now_sec - t.last_seen > ttl; }),
-        tracks_.end());
+    const double max_age = params_.max_age;
+    tracks_.erase(std::remove_if(tracks_.begin(), tracks_.end(),
+                                 [now_sec, max_age](const Track& t) {
+                                   return now_sec - t.last_seen > max_age;
+                                 }),
+                  tracks_.end());
   }
 
   /// Drop all tracks. The id counter is NOT reset, so ids issued after reset()

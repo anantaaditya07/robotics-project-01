@@ -32,6 +32,7 @@
 #include <semnav_perception/tracker.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
+#include <set>
 #include <string>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <vector>
@@ -69,10 +70,18 @@ class SemanticFusionNode : public rclcpp::Node {
     fusion::validate(fusion_params_);
     TrackerParams tp;
     tp.assoc_gate = declare_parameter<double>("assoc_gate", 0.6);
-    tp.ttl = declare_parameter<double>("ttl", 2.0);
+    // D-25: negative-evidence expiry; `ttl` is now only the lifetime stamped on published
+    // obstacles/markers (they are republished every frame).
+    ttl_ = declare_parameter<double>("ttl", 2.0);
+    const auto miss_frames = declare_parameter<int>("miss_frames", 10);
+    if (miss_frames < 1) {
+      throw std::invalid_argument("miss_frames must be >= 1");
+    }
+    tp.miss_frames = static_cast<uint32_t>(miss_frames);
+    tp.max_age = declare_parameter<double>("max_age", 120.0);
+    fov_margin_px_ = declare_parameter<double>("fov_margin_px", 40.0);
     tp.smoothing_alpha = declare_parameter<double>("smoothing_alpha", 0.5);
     tracker_ = std::make_unique<Tracker>(tp);
-    ttl_ = tp.ttl;
     scan_buffer_size_ = static_cast<std::size_t>(declare_parameter<int>("scan_buffer_size", 10));
     max_scan_dt_ = declare_parameter<double>("max_scan_dt", 0.1);  // 7.2 slop
     tf_timeout_ = declare_parameter<double>("tf_timeout", 0.1);
@@ -109,11 +118,11 @@ class SemanticFusionNode : public rclcpp::Node {
     }
     RCLCPP_INFO(get_logger(),
                 "target_frame %s, sector_fraction %.2f, push_out_fraction %.2f, range [%.2f, %.2f] "
-                "m, gate %.2f m, ttl "
+                "m, gate %.2f m, msg ttl "
                 "%.1f s, alpha %.2f, class_radius {%s}",
                 target_frame_.c_str(), fusion_params_.sector_fraction,
                 fusion_params_.push_out_fraction, fusion_params_.min_range,
-                fusion_params_.max_range, tp.assoc_gate, tp.ttl, tp.smoothing_alpha, radii.c_str());
+                fusion_params_.max_range, tp.assoc_gate, ttl_, tp.smoothing_alpha, radii.c_str());
   }
 
  private:
@@ -155,6 +164,7 @@ class SemanticFusionNode : public rclcpp::Node {
                   msg.header.frame_id.c_str());
     }
     intrinsics_ = fusion::Intrinsics{fx, cx};
+    image_width_ = static_cast<double>(msg.width);
   }
 
   void on_scan(sensor_msgs::msg::LaserScan::ConstSharedPtr msg) {
@@ -195,26 +205,50 @@ class SemanticFusionNode : public rclcpp::Node {
   void on_detections(const vision_msgs::msg::Detection2DArray& msg) {
     const rclcpp::Time stamp(msg.header.stamp);
     std::vector<Observation> observations;
-    if (!msg.detections.empty()) {
-      collect_observations(msg, stamp, observations);
+    std::set<std::string> unfused_classes;  // detected by YOLO but not localised this frame
+    geometry_msgs::msg::TransformStamped target_to_cam;
+    const bool fused =
+        collect_observations(msg, stamp, observations, unfused_classes, target_to_cam);
+    // D-25 negative evidence: only a fully processed frame can say "not there", only for tracks
+    // inside the camera view and LiDAR range, and not for a class YOLO saw but fusion could not
+    // localise in this frame.
+    ObservableFn observable;
+    if (fused) {
+      observable = [&](const Track& t) {
+        if (unfused_classes.count(t.class_name) != 0) {
+          return false;
+        }
+        geometry_msgs::msg::PointStamped in;
+        in.point.x = t.x;
+        in.point.y = t.y;
+        geometry_msgs::msg::PointStamped c;
+        tf2::doTransform(in, c, target_to_cam);
+        return fusion::pointInView(c.point.x, c.point.z, *intrinsics_, image_width_, fov_margin_px_,
+                                   fusion_params_.min_range, fusion_params_.max_range);
+      };
     }
-    const auto tracks = tracker_->update(observations, stamp.seconds());
+    const auto tracks = tracker_->update(observations, stamp.seconds(), observable);
     publish(tracks, msg.header.stamp);
   }
 
-  void collect_observations(const vision_msgs::msg::Detection2DArray& msg,
-                            const rclcpp::Time& stamp, std::vector<Observation>& out) {
+  /// Fuses every detection of the frame into map-frame observations. Returns true if the frame
+  /// was fully processed (intrinsics, scan within max_scan_dt, all transforms available), i.e. it
+  /// may serve as negative evidence; false if it was dropped.
+  bool collect_observations(const vision_msgs::msg::Detection2DArray& msg,
+                            const rclcpp::Time& stamp, std::vector<Observation>& out,
+                            std::set<std::string>& unfused_classes,
+                            geometry_msgs::msg::TransformStamped& target_to_cam) {
     if (!intrinsics_) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                            "no camera_info yet, dropping detections");
-      return;
+      return false;
     }
     const auto scan = closest_scan(stamp);
     if (!scan) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
                            "no scan within %.3f s of detection stamp %.3f, dropping detections",
                            max_scan_dt_, stamp.seconds());
-      return;
+      return false;
     }
     const std::string& camera_frame = msg.header.frame_id;
     const std::string& laser_frame = scan->header.frame_id;
@@ -224,12 +258,13 @@ class SemanticFusionNode : public rclcpp::Node {
       const auto timeout = tf2::durationFromSec(tf_timeout_);
       cam_to_laser = tf_buffer_->lookupTransform(laser_frame, camera_frame, stamp, timeout);
       laser_to_target = tf_buffer_->lookupTransform(target_frame_, laser_frame, stamp, timeout);
+      target_to_cam = tf_buffer_->lookupTransform(camera_frame, target_frame_, stamp, timeout);
     } catch (const tf2::TransformException& e) {
       // D-05: fail loudly, never fall back to a guessed transform.
       RCLCPP_ERROR(get_logger(), "TF %s -> %s -> %s at %.3f failed, dropping %zu detection(s): %s",
                    camera_frame.c_str(), laser_frame.c_str(), target_frame_.c_str(),
                    stamp.seconds(), msg.detections.size(), e.what());
-      return;
+      return false;
     }
 
     const fusion::Transform tf = to_fusion_transform(cam_to_laser);
@@ -246,6 +281,7 @@ class SemanticFusionNode : public rclcpp::Node {
       const auto res = fusion::fuse(u_min, u_max, *intrinsics_, tf, geom, scan->ranges,
                                     radius_for(hyp.class_id), fusion_params_);
       if (!res.ok()) {
+        unfused_classes.insert(hyp.class_id);
         RCLCPP_DEBUG(get_logger(), "%s [%.0f, %.0f] px: %s (%zu beams, %zu valid, %zu in cluster)",
                      hyp.class_id.c_str(), u_min, u_max, fusion::toString(res.status),
                      res.beams_in_sector, res.valid_beams, res.cluster_beams);
@@ -260,6 +296,7 @@ class SemanticFusionNode : public rclcpp::Node {
       tf2::doTransform(in, p, laser_to_target);
       out.push_back(Observation{hyp.class_id, p.point.x, p.point.y, hyp.score, res.range});
     }
+    return true;
   }
 
   void on_expiry_timer() {
@@ -357,6 +394,8 @@ class SemanticFusionNode : public rclcpp::Node {
   std::map<std::string, double> class_radius_;
 
   std::optional<fusion::Intrinsics> intrinsics_;
+  double image_width_{0.0};
+  double fov_margin_px_{0.0};
   std::deque<sensor_msgs::msg::LaserScan::ConstSharedPtr> scans_;
 
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;

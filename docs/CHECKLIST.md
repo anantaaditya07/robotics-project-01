@@ -117,6 +117,7 @@ Open questions blocking a phase are listed in docs/DECISIONS.md (D-xx).
 - [x] Scan ring buffer, pick closest stamp (or ApproximateTime, slop 0.1 s)
 - [x] Header-only tracker.hpp: NN association per class with gate 0.6 m, smoothing_alpha, ids,
       miss counter, ttl 2 s
+      D-25: expiry by negative evidence (miss_frames in view) + max_age 120 s instead of ttl 2 s
 - [x] Publish /semantic_obstacles (frame map, reliable depth 5) and /semantic_markers
 - [x] Parameters: class_radius map (person 0.35, chair 0.25, default 0.3), min/max_range,
       sector_fraction, assoc_gate, ttl, smoothing_alpha (config/perception_params.yaml)
