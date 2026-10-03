@@ -95,10 +95,12 @@ def generate_launch_description():
                         '(D-16); set false when the gate runs'),
     ]
 
-    # D-19: Fast DDS profile with a large shared-memory segment so camera images are not lost.
-    fastdds_profile = SetEnvironmentVariable(
-        'FASTRTPS_DEFAULT_PROFILES_FILE',
-        os.path.join(bringup_dir, 'config', 'fastdds_profile.xml'))
+    # D-20: CycloneDDS for every SemNav process (Fast DDS lost TF between Nav2 servers).
+    dds_env = [
+        SetEnvironmentVariable('RMW_IMPLEMENTATION', 'rmw_cyclonedds_cpp'),
+        SetEnvironmentVariable(
+            'CYCLONEDDS_URI', 'file://' + os.path.join(bringup_dir, 'config', 'cyclonedds.xml')),
+    ]
 
     stdout_linebuf_envvar = SetEnvironmentVariable('RCUTILS_LOGGING_BUFFERED_STREAM', '1')
 
@@ -143,7 +145,7 @@ def generate_launch_description():
         parameters=[{'use_sim_time': use_sim_time}],
         condition=IfCondition(cmd_vel_relay))
 
-    env = [stdout_linebuf_envvar, fastdds_profile]
+    env = [stdout_linebuf_envvar] + dds_env
     return LaunchDescription(declare_args + env + nav2_nodes + [
         lifecycle_manager,
         relay,

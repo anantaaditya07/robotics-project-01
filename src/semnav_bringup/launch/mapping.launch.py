@@ -44,10 +44,12 @@ def generate_launch_description():
             description='slam_toolbox parameter file'),
     ]
 
-    # D-19: Fast DDS profile with a large shared-memory segment so camera images are not lost.
-    fastdds_profile = SetEnvironmentVariable(
-        'FASTRTPS_DEFAULT_PROFILES_FILE',
-        os.path.join(bringup_dir, 'config', 'fastdds_profile.xml'))
+    # D-20: CycloneDDS for every SemNav process (Fast DDS lost TF between Nav2 servers).
+    dds_env = [
+        SetEnvironmentVariable('RMW_IMPLEMENTATION', 'rmw_cyclonedds_cpp'),
+        SetEnvironmentVariable(
+            'CYCLONEDDS_URI', 'file://' + os.path.join(bringup_dir, 'config', 'cyclonedds.xml')),
+    ]
 
     sim = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(bringup_dir, 'launch', 'sim.launch.py')),
@@ -67,7 +69,7 @@ def generate_launch_description():
         output='screen')
 
     return LaunchDescription(declare_args + [
-        fastdds_profile,
+        *dds_env,
         sim,
         slam_toolbox,
     ])

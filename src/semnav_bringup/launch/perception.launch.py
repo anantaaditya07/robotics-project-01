@@ -1,7 +1,7 @@
 """Perception bringup: yolo_onnx_node (7.1) and semantic_fusion_node (7.2).
 
-Parameters come from config/perception_params.yaml. The Fast DDS profile (D-19) is exported so
-camera images arrive over shared memory.
+Parameters come from config/perception_params.yaml. RMW_IMPLEMENTATION=rmw_cyclonedds_cpp and
+CYCLONEDDS_URI (config/cyclonedds.xml) are exported, like in every SemNav launch file (D-20).
 
 semantic_fusion_node needs the map frame: run localization.launch.py (or mapping.launch.py).
 
@@ -33,10 +33,12 @@ def generate_launch_description():
             'use_sim_time', default_value='true', description='Use the Gazebo clock'),
     ]
 
-    # D-19: Fast DDS profile with a large shared-memory segment so camera images are not lost.
-    fastdds_profile = SetEnvironmentVariable(
-        'FASTRTPS_DEFAULT_PROFILES_FILE',
-        os.path.join(bringup_dir, 'config', 'fastdds_profile.xml'))
+    # D-20: CycloneDDS for every SemNav process (Fast DDS lost TF between Nav2 servers).
+    dds_env = [
+        SetEnvironmentVariable('RMW_IMPLEMENTATION', 'rmw_cyclonedds_cpp'),
+        SetEnvironmentVariable(
+            'CYCLONEDDS_URI', 'file://' + os.path.join(bringup_dir, 'config', 'cyclonedds.xml')),
+    ]
 
     yolo = Node(
         package='semnav_perception',
@@ -52,4 +54,4 @@ def generate_launch_description():
         parameters=[params_file, {'use_sim_time': use_sim_time}],
         output='screen')
 
-    return LaunchDescription(declare_args + [fastdds_profile, yolo, fusion])
+    return LaunchDescription(declare_args + dds_env + [yolo, fusion])

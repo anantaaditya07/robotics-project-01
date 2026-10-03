@@ -67,10 +67,12 @@ def generate_launch_description():
             'y_pose', default_value='-0.5', description='Robot spawn y in the world frame (m)'),
     ]
 
-    # D-19: Fast DDS profile with a large shared-memory segment so camera images are not lost.
-    fastdds_profile = SetEnvironmentVariable(
-        'FASTRTPS_DEFAULT_PROFILES_FILE',
-        os.path.join(bringup_dir, 'config', 'fastdds_profile.xml'))
+    # D-20: CycloneDDS for every SemNav process (Fast DDS lost TF between Nav2 servers).
+    dds_env = [
+        SetEnvironmentVariable('RMW_IMPLEMENTATION', 'rmw_cyclonedds_cpp'),
+        SetEnvironmentVariable(
+            'CYCLONEDDS_URI', 'file://' + os.path.join(bringup_dir, 'config', 'cyclonedds.xml')),
+    ]
 
     # The turtlebot3_gazebo launch files read TURTLEBOT3_MODEL from the environment.
     set_model = SetEnvironmentVariable('TURTLEBOT3_MODEL', robot_model)
@@ -116,7 +118,7 @@ def generate_launch_description():
         condition=IfCondition(rviz))
 
     return LaunchDescription(declare_args + model_paths + [
-        fastdds_profile,
+        *dds_env,
         set_model,
         gzserver,
         gzclient,
