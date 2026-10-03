@@ -432,7 +432,7 @@ inference takes ~40 ms (p50) and the camera runs at 15 Hz; 0 frames dropped by t
 (SHM segment 10 MB + UDPv4, 8 MB socket buffers) exported as FASTRTPS_DEFAULT_PROFILES_FILE by the
 SemNav launch files; user raises UDP buffers via /etc/sysctl.d (sudo).
 
-## D-20 Nav2 server stops receiving map->odom from one TF publisher (DDS reader stall)  - ROOT CAUSE FOUND (tf2_ros deadlock), fix OPEN
+## D-20 Nav2 server stops receiving map->odom from one TF publisher (DDS reader stall)  - FIXED (tf2 0.25.24 underlay)
 
 **Symptom (2026-10-03, Phase 5 verification):** with sim + AMCL + Nav2 + perception running,
 controller_server logged "Transform data too old when converting from map to odom" continuously
@@ -558,3 +558,17 @@ Backtrace excerpt kept in docs/d20_controller_backtrace.txt.
   priority) and/or reduce waitForTransform traffic (obstacle layer `transform_tolerance`, scan
   rate). Lowers the probability only.
 - C. Report upstream and accept the risk for the demo with a restart watchdog.
+
+**Final (accepted 2026-10-03):** A. Upstream already fixed it: ros2/geometry2 PR #982
+(https://github.com/ros2/geometry2/pull/982), Humble backport PR #990
+(https://github.com/ros2/geometry2/pull/990, commit 9997e969, "Fix ABBA deadlock between
+`waitForTransform` and `testTransformableRequests`"), released in tag 0.25.24 (commit 404b7224),
+not yet in apt (installed 0.25.23). The only code change in 0.25.24 is tf2/src/buffer_core.cpp
+(callbacks are collected and run after releasing transformable_requests_mutex_). No local patch.
+`scripts/setup_underlay.sh` clones that tag into ~/semnav_underlay (outside the repo), verifies the
+commit, builds tf2 (+ tf2_ros, whose upstream test
+`wait_for_transform_does_not_deadlock_with_set_transform` passes: test_buffer 11/11, 21 tests
+total). Every shell sources it between /opt/ros/humble and the workspace (README).
+Confirmation soak (10 min, Cyclone, sim + AMCL + Nav2 + yolo + fusion, annotated images on):
+36/36 goals SUCCEEDED, 2 stale-TF errors (both at startup, before the AMCL initial pose; same
+in every healthy run), map->odom age -1.1..-0.8 s, CPU ~74 % idle.
