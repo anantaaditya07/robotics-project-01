@@ -124,6 +124,8 @@ Open questions blocking a phase are listed in docs/DECISIONS.md (D-xx).
       push_out_fraction 0.5 (D-21), nearest-cluster range (D-22)): person 3.3 m 0.15 m,
       1.4 m 0.15 m, 0.8 m 0.25 m; chair 1.8 m 0.09 m, 1.0 m 0.11 m
 - [ ] OPEN D-20: Nav2 controller_server stops taking in /tf when yolo + fusion both run
+      (time-boxed 2026-10-03: not sim time, not CPU, not annotated images, not blocking lookups;
+      controller stops taking in all /tf when the robot reaches a goal; next: gdb backtrace)
 - [x] DDS: CycloneDDS for all SemNav processes (D-20), config/cyclonedds.xml; images 15 Hz
 
 **Done when:** Markers sit on the right objects in RViz.

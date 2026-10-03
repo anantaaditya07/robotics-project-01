@@ -517,3 +517,19 @@ params); a gap exactly equal to cluster_gap stays in one cluster; no qualifying 
 Status::NoCluster (detection dropped). Re-measure (teleported poses, AMCL re-seeded): person
 1.4 m 1.36 -> 0.15 m, person 0.8 m 1.33 -> 0.25 m (YOLO detects it in 30/90 frames at that
 range); person 3.3 m 0.15 m, chair 1.8 m 0.09 m, chair 1.0 m 0.11 m unchanged.
+
+**Time-boxed investigation (2026-10-03 19:40-20:21, not solved):**
+1. use_sim_time True on all 23 nodes; /tf publishers: amcl, robot_state_publisher,
+   turtlebot3_diff_drive; /tf_static: robot_state_publisher; all /tf stamps follow /clock
+   (map->odom +1.0 s = AMCL transform_tolerance, others +0.001..+0.099 s). No foreign clock/TF.
+2. publish_annotated=false: still stalls (964 stale-TF errors, map->odom frozen at 94.597 s).
+   CPU not saturated: ~75 % idle (top), gzserver ~55 %; controller "missed rate" warnings 3-5.
+3. fusion tf_timeout=0 (non-blocking lookups): still stalls (951 errors, frozen at 123.4 s).
+4. Probe during a stall: controller_server lifecycle "active"; local costmap keeps publishing
+   published_footprint at 5 Hz but with the stamp frozen (63.0 s) -> the whole controller_server
+   process stopped taking in /tf (odom->base_footprint too, not only map->odom), starting when
+   the robot reached its first goal. A healthy controller also shows all threads in futex waits,
+   so thread states say nothing about a deadlock.
+Next step: backtrace of controller_server during a stall (run it under gdb via a launch prefix,
+or temporarily allow ptrace: ptrace_scope is 1), and test without the fusion node's
+/semantic_obstacles and /semantic_markers publishers.
