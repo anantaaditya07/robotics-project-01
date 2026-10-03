@@ -37,6 +37,7 @@ Open questions blocking a phase are listed in docs/DECISIONS.md (D-xx).
 
 ## Phase 2 (Day 2) - Map, Nav2, YOLO sanity check
 - [ ] USER: build map with slam_toolbox online_async (Mode B) by teleop; save with scripts/save_map.sh
+      On this machine launch with `rviz_software_gl:=true` (D-17: RViz Map shader fails on Intel GL)
 - [ ] Bring up Nav2 + AMCL + map_server on saved map (Mode A); send 2D Goal Pose from RViz
 - [x] Nav2 params based on nav2_bringup nav2_params.yaml + TB3 waffle overlay (D-03), load without errors
       (config/nav2_params.yaml: NavFn, DWB, local obstacle+inflation, global static+obstacle+inflation,

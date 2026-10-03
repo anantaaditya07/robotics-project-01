@@ -25,6 +25,7 @@ def generate_launch_description():
 
     gui = LaunchConfiguration('gui')
     rviz = LaunchConfiguration('rviz')
+    rviz_software_gl = LaunchConfiguration('rviz_software_gl')
     use_sim_time = LaunchConfiguration('use_sim_time')
     slam_params_file = LaunchConfiguration('slam_params_file')
 
@@ -32,6 +33,9 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'gui', default_value='true', description='Start the Gazebo client (gzclient)'),
         DeclareLaunchArgument('rviz', default_value='true', description='Start RViz2'),
+        DeclareLaunchArgument(
+            'rviz_software_gl', default_value='false',
+            description='Render RViz with Mesa software GL (D-17: Map shader fails on Intel iGPU)'),
         DeclareLaunchArgument(
             'use_sim_time', default_value='true', description='Use the Gazebo clock'),
         DeclareLaunchArgument(
@@ -45,6 +49,7 @@ def generate_launch_description():
         launch_arguments={
             'gui': gui,
             'rviz': rviz,
+            'rviz_software_gl': rviz_software_gl,
             'use_sim_time': use_sim_time,
         }.items())
 

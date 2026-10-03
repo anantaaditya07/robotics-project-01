@@ -325,3 +325,44 @@ missing; apt candidate `ros-humble-topic-tools` 1.1.2 available). No other relay
 **Final (accepted 2026-10-03):** A. User installs `ros-humble-topic-tools`; semnav_bringup adds
 `<exec_depend>topic_tools</exec_depend>`; navigation.launch.py arg `cmd_vel_relay` (default true)
 runs `topic_tools relay /cmd_vel_nav /cmd_vel`. Set it false once safety_gate_node exists.
+
+## D-17 Mapping "smear" is an RViz Map-shader failure on the Intel iGPU, not a SLAM fault  - ACCEPTED
+
+**Symptom (user, 2026-10-03):** during `mapping.launch.py`, the map in RViz smeared into a
+diagonal band and the live scan did not line up with the map walls.
+
+**Evidence (headless, same build):**
+- use_sim_time true on slam_toolbox and robot_state_publisher (and passed to RViz by
+  sim.launch.py); slam frames map / odom / base_footprint and scan /scan (frame base_scan) match
+  the TF tree; laser pose identical to the stock TB3 waffle SDF.
+- /odom vs Gazebo ground truth during a 195 deg in-place turn at 0.3 rad/s: <= 1.5 deg, 3 mm.
+- Scripted drives (0.1 m/s + 0.3 rad/s turns; teleop defaults 0.5 m/s + 1.0 rad/s): slam pose
+  map->base_footprint vs ground truth <= 0.011 m / 1.3 deg; 74-99 % of scan endpoints within one
+  cell of an occupied map cell (lower values = newly seen areas before the next 5 s map update).
+- RTF 0.98; all /tf stamps follow /clock; scan age vs /clock < 10 ms.
+- No sim time jump: `/reset_simulation` logs "Detected jump back in time" in slam_toolbox; the
+  user's slam log has no such line. `/reset_world` does not disturb slam (odom is world-sourced).
+- User's RViz log (rviz2_127042): `[ERROR] Vertex Program:rviz/glsl120/indexed_8bit_image.vert
+  ... GLSL link result: active samplers with a different type refer to the same texture image
+  unit`, ~5 s after start (first /map). indexed_8bit_image is the Map display's shader. The two
+  earlier RViz runs on this machine (no Map display) have no such error.
+- GPU: Intel iGPU (8086:a7a0, Mesa, GL 4.6) + NVIDIA 25ac with its kernel driver not loaded
+  (`nvidia-smi` fails), so RViz renders on Mesa/Intel.
+
+**Conclusion:** SLAM output is correct; the Map display shader fails to link on this GL stack and
+RViz cannot draw the occupancy grid correctly on the Intel hardware driver (smeared band in the
+user's session; no map at all in the scripted check below).
+
+**Options:** A. launch arg `rviz_software_gl` (default false) setting LIBGL_ALWAYS_SOFTWARE=1 for
+RViz only; B. same, default true; C. fix NVIDIA driver + PRIME offload; D. README note only.
+
+**Final (accepted 2026-10-03):** A. sim.launch.py arg `rviz_software_gl` (default false), forwarded
+by mapping.launch.py; use `rviz_software_gl:=true` on this machine.
+
+**Verification (2026-10-03, RViz on the user's display, scripted drive 0.1 m/s + 0.3 rad/s turns):**
+- `rviz_software_gl:=false` (Intel/Mesa GL 4.6): GLSL link error logged; window grab shows the
+  scan but no map.
+- `rviz_software_gl:=true` (llvmpipe GL 4.5): the same GLSL error is still logged (Mesa's shared
+  GLSL linker), but the map renders and the scan lies on the map walls; slam pose vs ground truth
+  <= 0.001 m / 0.2 deg, 63-99 % of scan endpoints on occupied cells (+-1 cell).
+- RViz frame rate 14 fps with software GL (31 fps hardware).

@@ -14,7 +14,7 @@ from launch.actions import (AppendEnvironmentVariable, DeclareLaunchArgument,
                             IncludeLaunchDescription, SetEnvironmentVariable)
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 
 
@@ -27,6 +27,7 @@ def generate_launch_description():
     gui = LaunchConfiguration('gui')
     rviz = LaunchConfiguration('rviz')
     rviz_config = LaunchConfiguration('rviz_config')
+    rviz_software_gl = LaunchConfiguration('rviz_software_gl')
     use_sim_time = LaunchConfiguration('use_sim_time')
     robot_model = LaunchConfiguration('robot_model')
     robot_sdf = LaunchConfiguration('robot_sdf')
@@ -42,6 +43,9 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'gui', default_value='true', description='Start the Gazebo client (gzclient)'),
         DeclareLaunchArgument('rviz', default_value='true', description='Start RViz2'),
+        DeclareLaunchArgument(
+            'rviz_software_gl', default_value='false',
+            description='Render RViz with Mesa software GL (D-17: Map shader fails on Intel iGPU)'),
         DeclareLaunchArgument(
             'rviz_config',
             default_value=os.path.join(bringup_dir, 'rviz', 'semnav.rviz'),
@@ -100,6 +104,9 @@ def generate_launch_description():
         name='rviz2',
         arguments=['-d', rviz_config],
         parameters=[{'use_sim_time': use_sim_time}],
+        # D-17: Mesa treats LIBGL_ALWAYS_SOFTWARE=0 as unset, so 'false' keeps hardware GL.
+        additional_env={'LIBGL_ALWAYS_SOFTWARE': PythonExpression(
+            ["'1' if '", rviz_software_gl, "'.lower() == 'true' else '0'"])},
         output='screen',
         condition=IfCondition(rviz))
 
