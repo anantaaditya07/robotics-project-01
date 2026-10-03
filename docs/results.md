@@ -103,3 +103,38 @@ alternative that is cheaper; (2) a 200-capped ring decaying with k = 3 adds at m
 already around the mapped person; (3) DWB follows the global path (obstacle critic 0.02 vs 32).
 Showing the intended "wider berth" needs either an open-floor scenario with a real detour
 option or a stronger/longer ring; it is not demonstrated by the current results.
+
+## A/B on a map without the semantic objects (D-27), 2026-10-03
+
+The static map no longer contains person, chair and bottle (they stay in the simulation), so
+only live LiDAR and the SemanticLayer see them. D-25/D-26 tracker and non-lethal cost unchanged.
+Clearance and path over successful runs only. Raw CSV: `data/eval/*_targeted_d27.csv`,
+`data/eval/*_full_d27.csv`.
+
+Targeted routes (goals 3 -> 7), 3 runs per configuration:
+
+| Goal | Config | Succeeded | Min clearance to person [m] (min / mean) | Path [m] mean |
+|---|---|---|---|---|
+| 4 | semantic_on | 3/3 | +0.19 / +0.22 | 1.22 |
+| 4 | semantic_off | 3/3 | +0.19 / +0.22 | 1.29 |
+| 5 | semantic_on | 3/3 | +0.05 / +0.09 | 1.42 |
+| 5 | semantic_off | 3/3 | +0.10 / +0.11 | 1.35 |
+| 7 | semantic_on | 3/3 | -0.04 / -0.02 | 4.59 |
+| 7 | semantic_off | 3/3 | -0.02 / -0.01 | 4.52 |
+
+Full 10-goal sequence, 1 run per configuration: 10/10 both; min clearance -0.04 (on) vs -0.05
+(off); total path 15.91 m (on) vs 16.08 m (off). 0 stale-TF errors in all runs.
+
+Simultaneous person tracks (max in any single /semantic_obstacles message, one real person):
+targeted on 1 / 1 / 1, off 3 / 1 / 2; full run on 2, off 2. Distinct ids per run 1-6. The
+tracker is identical in both configurations (only the costmap layer is toggled), so the
+difference is run-to-run variation; brief duplicates (2-3) still occur.
+
+**Result: still no measurable benefit.** With the objects removed from the static map, the
+semantic layer is the only source of cost beyond the LiDAR obstacle and its 0.55 m inflation,
+yet clearance and path length match the layer-off runs within noise, and the closest approach
+(goal 7, ~0.53 m centre to centre) is the same. The remaining candidate causes are the planner
+and controller, not the map: NavFn's 50 + 0.8 x cost metric with a 200-capped ring that decays
+with k = 3 (cost < 100 beyond ~0.6 m from the person centre), the constrained route geometry
+around pillar column x = 1.1, and DWB's weak obstacle critic (0.02 vs 32 for path following).
+Next diagnostic (not done): plot the global plan and costmap with the layer on vs off on goal 7.

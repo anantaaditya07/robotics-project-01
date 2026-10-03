@@ -68,6 +68,7 @@ def main() -> int:
     metrics = {}
     goal_state = {'active': False}
     track_ids = {c: set() for c in OBJECTS}  # distinct published track ids per class, this run
+    max_simul = {c: 0 for c in OBJECTS}  # max tracks of a class in a single message, this run
 
     def on_states(msg):
         st.update(dict(zip(msg.name, msg.pose)))
@@ -93,6 +94,8 @@ def main() -> int:
         for o in msg.obstacles:
             if o.class_name in track_ids:
                 track_ids[o.class_name].add(o.id)
+        for c in max_simul:
+            max_simul[c] = max(max_simul[c], sum(o.class_name == c for o in msg.obstacles))
         if not goal_state['active']:
             return
         for cls in OBJECTS:
@@ -127,7 +130,8 @@ def main() -> int:
                      'min_person_clearance_m', 'person_err_m', 'chair_err_m'])
     if r_new:
         rw.writerow(['label', 'run', 'succeeded', 'goals', 'yolo_total_p50_ms',
-                     'yolo_total_p95_ms', 'yolo_fps', 'person_tracks', 'chair_tracks'])
+                     'yolo_total_p95_ms', 'yolo_fps', 'person_tracks', 'chair_tracks',
+                     'max_simultaneous_person', 'max_simultaneous_chair'])
 
     def mean(v):
         return sum(v) / len(v) if v else float('nan')
@@ -137,6 +141,8 @@ def main() -> int:
         ok = 0
         for ids in track_ids.values():
             ids.clear()
+        for c in max_simul:
+            max_simul[c] = 0
         for gi in order:
             x, y = WAYPOINTS[gi]
             goal = NavigateToPose.Goal()
@@ -171,7 +177,8 @@ def main() -> int:
         m = metrics.get('last', [float('nan')] * 10)
         rw.writerow([args.label, run, ok, len(order), round(m[M_TOTAL_P50], 2),
                      round(m[M_TOTAL_P95], 2), round(m[M_FPS], 2),
-                     len(track_ids['person']), len(track_ids['chair'])])
+                     len(track_ids['person']), len(track_ids['chair']),
+                     max_simul['person'], max_simul['chair']])
         rf.flush()
         print(f'run {run}: {ok}/{len(order)} succeeded', flush=True)
     gf.close()
