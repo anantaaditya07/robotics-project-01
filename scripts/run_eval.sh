@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # SemNav A/B evaluation (Phase 8): semantic layer on vs off, same waypoints, headless.
 #
-#   scripts/run_eval.sh [runs_per_config]        # default 5
+#   scripts/run_eval.sh [runs_per_config] [extra eval_run.py args...]   # default 5 runs
+#   e.g. scripts/run_eval.sh 3 --goals 3,4,5,6,7   (targeted routes; set EVAL_NAME to keep files apart)
 #
 # For each configuration: write a nav2_params variant (semantic_layer.enabled true/false) under
 # data/eval/, start semnav.launch.py headless in its own process group, wait for Nav2, run
@@ -11,6 +12,9 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 RUNS="${1:-5}"
+shift || true
+EXTRA=("$@")
+NAME="${EVAL_NAME:-}"   # suffix for output files, e.g. _targeted
 OUT="$REPO/data/eval"
 UNDERLAY="${SEMNAV_UNDERLAY:-$HOME/semnav_underlay}"
 READY_TIMEOUT=120   # s to wait for Nav2 "Managed nodes are active"
@@ -25,7 +29,8 @@ export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export CYCLONEDDS_URI="file://$REPO/install/semnav_bringup/share/semnav_bringup/config/cyclonedds.xml"
 
 mkdir -p "$OUT"
-rm -f "$OUT/goals.csv" "$OUT/runs.csv"
+GOALS_CSV="$OUT/goals$NAME.csv"; RUNS_CSV="$OUT/runs$NAME.csv"
+rm -f "$GOALS_CSV" "$RUNS_CSV"
 PARAMS="$REPO/install/semnav_bringup/share/semnav_bringup/config/nav2_params.yaml"
 
 stop_stack() {
@@ -47,7 +52,7 @@ for cm in ('global_costmap', 'local_costmap'):
     d[cm][cm]['ros__parameters']['semantic_layer']['enabled'] = want
 yaml.safe_dump(d, open(sys.argv[2], 'w'), sort_keys=False)
 PY
-  log="$OUT/$label.launch.log"
+  log="$OUT/$label$NAME.launch.log"
   echo "== $label: launching (log $log)"
   setsid ros2 launch semnav_bringup semnav.launch.py gui:=false rviz:=false \
     nav2_params:="$variant" > "$log" 2>&1 &
@@ -60,10 +65,12 @@ PY
     echo "error: stack not ready for $label" >&2; stop_stack "$pgid"; exit 1
   fi
   /usr/bin/python3 "$REPO/scripts/eval_run.py" --label "$label" --runs "$RUNS" \
-    --csv "$OUT/goals.csv" --runs-csv "$OUT/runs.csv" || true
+    --csv "$GOALS_CSV" --runs-csv "$RUNS_CSV" "${EXTRA[@]}" || true
   echo "$label stale-TF errors: $(grep -cE 'Transform data too old' "$log" || true)"
   stop_stack "$pgid"
 done
 
-python3 "$REPO/scripts/eval_summary.py" --goals "$OUT/goals.csv" --runs "$OUT/runs.csv" \
-  --out "$REPO/docs/results.md"
+if [[ -z "$NAME" ]]; then
+  python3 "$REPO/scripts/eval_summary.py" --goals "$GOALS_CSV" --runs "$RUNS_CSV" \
+    --out "$REPO/docs/results.md"
+fi

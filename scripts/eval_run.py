@@ -45,6 +45,8 @@ def main() -> int:
     ap.add_argument('--runs', type=int, default=5, help='passes over the waypoint list')
     ap.add_argument('--csv', default='data/eval/goals.csv', help='per-goal CSV (appended)')
     ap.add_argument('--runs-csv', default='data/eval/runs.csv', help='per-run CSV (appended)')
+    ap.add_argument('--goals', default='',
+                    help='comma-separated waypoint indices to drive, in order (default: all)')
     ap.add_argument('--goal-timeout', type=float, default=120.0, help='per-goal timeout (wall s)')
     ap.add_argument('--robot-entity', default='waffle', help='Gazebo entity name of the robot')
     ap.add_argument('--robot-radius', type=float, default=0.22, help='m, as in nav2_params')
@@ -126,9 +128,11 @@ def main() -> int:
     def mean(v):
         return sum(v) / len(v) if v else float('nan')
 
+    order = [int(i) for i in args.goals.split(',')] if args.goals else list(range(len(WAYPOINTS)))
     for run in range(1, args.runs + 1):
         ok = 0
-        for gi, (x, y) in enumerate(WAYPOINTS):
+        for gi in order:
+            x, y = WAYPOINTS[gi]
             goal = NavigateToPose.Goal()
             goal.pose.header.frame_id = 'map'
             goal.pose.pose.position.x, goal.pose.pose.position.y = x, y
@@ -159,10 +163,10 @@ def main() -> int:
             gf.flush()
             print(' '.join(str(v) for v in row), flush=True)
         m = metrics.get('last', [float('nan')] * 10)
-        rw.writerow([args.label, run, ok, len(WAYPOINTS), round(m[M_TOTAL_P50], 2),
+        rw.writerow([args.label, run, ok, len(order), round(m[M_TOTAL_P50], 2),
                      round(m[M_TOTAL_P95], 2), round(m[M_FPS], 2)])
         rf.flush()
-        print(f'run {run}: {ok}/{len(WAYPOINTS)} succeeded', flush=True)
+        print(f'run {run}: {ok}/{len(order)} succeeded', flush=True)
     gf.close()
     rf.close()
     node.destroy_node()

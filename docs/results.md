@@ -34,3 +34,41 @@ Definitions:
 - **Chair position error is viewpoint dependent.** Median 0.05-0.13 m at most goals, but 0.58 m
   (5/5 runs, both configurations) while driving to goal 2 (-0.55, 0.55), where the LiDAR sector
   of the chair box picks up a different surface than the chair's footprint centre.
+
+## Targeted A/B after D-25 (negative-evidence track expiry), 2026-10-03
+
+Routes that pass the person only: waypoint sequence 3 -> 4 -> 5 -> 6 -> 7 (`scripts/run_eval.sh 3
+--goals 3,4,5,6,7`, `EVAL_NAME=_targeted`), 3 runs per configuration, everything else identical.
+Raw CSV: `data/eval/goals_targeted.csv`.
+
+| Goal (route) | Config | Succeeded | Min clearance to person [m] (min / mean) | Path [m] mean (min-max) |
+|---|---|---|---|---|
+| 4: (0.55, 0.55) -> (0.50, -0.55) | semantic_on | 1/3 | +0.22 / +0.35 | 0.81 (0.36-1.33) |
+| | semantic_off | 3/3 | +0.20 / +0.22 | 1.24 (1.20-1.27) |
+| 5: -> (0.55, -1.80) | semantic_on | 1/3 | +0.07 / +0.29 | 0.52 (0.00-1.42) |
+| | semantic_off | 3/3 | +0.06 / +0.08 | 1.41 (1.38-1.44) |
+| 7: (-0.70, -1.90) -> (1.75, 0.55) | semantic_on | 2/3 | +0.08 / +0.28 | 2.02 (0.00-4.19) |
+| | semantic_off | 3/3 | +0.01 / +0.07 | 4.40 (4.28-4.47) |
+
+All 5 goals of the sequence: semantic_on 7/15, semantic_off 15/15; 0 stale-TF errors in both.
+
+**Result: with persistent tracks the semantic layer now changes behaviour, but harmfully.** The
+higher mean clearances with the layer on mostly come from goals that aborted early (path ~0 m),
+not from a wider berth on successful runs. Failures are DWB "No valid trajectories ...
+BaseObstacle/Trajectory Hits Obstacle" (343x) and NavFn "failed to create plan" (49x): the robot
+or its goal ends up inside lethal semantic discs.
+
+**Cause (probe, one route 3 -> 4):** a single person produced five person tracks - three near the
+true footprint centre (1.33, -0.59) and two ghosts at (1.01, -0.16) and (2.60, -0.86), created
+when a fused position fell outside the 0.6 m association gate (close-range / partial boxes).
+Before D-25 ghosts expired after 2 s; now they persist (up to max_age 120 s) and each paints a
+LETHAL core of 0.35 m (0.57 m with the robot radius), e.g. the ghost at (1.01, -0.16) blocks the
+gap between the person and pillar (1.1, 0).
+
+Why the layer had no visible effect before D-25: NavFn does weigh it (cell cost = 50 + 0.8 x
+costmap cost), but the person was usually not in the costmap when routes were planned (2 s TTL
+after leaving view). DWB itself barely reacts to costs below lethal (BaseObstacle scale 0.02 vs
+PathAlign/PathDist 32), so the effect has to come from the global plan.
+
+**Next steps (not done):** confirm tracks before publishing (min hits), merge same-class tracks
+closer than the class footprint, shorter max_age for low-hit tracks, and re-run this A/B.

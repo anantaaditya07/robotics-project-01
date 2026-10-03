@@ -243,3 +243,19 @@ error against Gazebo ground truth, and YOLO latency, all produced by `scripts/ru
   its own license.
 - **This repository** has no top-level LICENSE file. The `package.xml` files of the SemNav packages
   declare `Apache-2.0`.
+
+## Results (simulation, 2026-10-03)
+
+Full numbers and method: [docs/results.md](docs/results.md).
+
+- Full 10-waypoint benchmark, 5 runs per configuration: 50/50 goals with the semantic layer on and
+  50/50 off; YOLOv8n via ONNX Runtime on CPU: total latency p50 ~34.5 ms / p95 ~40.5 ms, 15 fps.
+- Fused position error vs ground truth: person ~0.3 m, chair ~0.2 m mean (chair up to 0.58 m from
+  one viewpoint).
+- **The semantic layer does not yet improve navigation.** With 2 s track expiry it had no
+  measurable effect (people left the costmap 2 s after leaving view). With persistent tracks
+  (D-25) it changes behaviour but blocks routes: on the routes past the person only 7/15 goals
+  succeeded with the layer vs 15/15 without, because ghost person tracks paint lethal discs.
+  Track confirmation/merging is the open next step.
+- Known limits: 2D LiDAR at ~0.17 m sees legs, not bodies (D-21, D-22); requires the tf2 0.25.24
+  underlay on Humble (see Setup notes).

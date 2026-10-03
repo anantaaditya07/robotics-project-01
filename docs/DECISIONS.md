@@ -606,3 +606,8 @@ reset. `ttl` (2 s) remains only the lifetime stamped on published obstacles/mark
 republished every frame. Pure logic: tracker.hpp (ObservableFn predicate), fusion::pointInView.
 Tests: 6 new tracker tests (in-view expiry, out-of-view persistence, max_age, per-track predicate,
 miss count frozen out of view), 1 view test.
+
+**Targeted A/B (2026-10-03):** with D-25 the semantic layer affects behaviour but blocks routes
+(7/15 goals with the layer vs 15/15 without) because ghost person tracks (fusion outliers beyond
+the 0.6 m gate) now persist; see docs/results.md. D-25 stays in place; track confirmation and
+same-class merging are the proposed follow-up (needs a decision).
