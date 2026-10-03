@@ -30,6 +30,9 @@ void SemanticLayer::onInitialize() {
   declareParameter("topic", rclcpp::ParameterValue(std::string("/semantic_obstacles")));
   declareParameter("qos_depth", rclcpp::ParameterValue(5));
   declareParameter("decay_k", rclcpp::ParameterValue(3.0));
+  // D-26: semantic cost is never lethal; LiDAR is the only lethal source.
+  declareParameter("max_semantic_cost",
+                   rclcpp::ParameterValue(static_cast<int>(kDefaultMaxSemanticCost)));
   declareParameter("obstacle_timeout", rclcpp::ParameterValue(2.0));
   declareParameter("log_throttle_period", rclcpp::ParameterValue(5.0));
 
@@ -39,6 +42,8 @@ void SemanticLayer::onInitialize() {
   node->get_parameter(getFullName("topic"), topic);
   node->get_parameter(getFullName("qos_depth"), qos_depth);
   node->get_parameter(getFullName("decay_k"), decay_k_);
+  int max_semantic_cost = 0;
+  node->get_parameter(getFullName("max_semantic_cost"), max_semantic_cost);
   node->get_parameter(getFullName("obstacle_timeout"), obstacle_timeout_);
   node->get_parameter(getFullName("log_throttle_period"), log_throttle_period_);
 
@@ -48,6 +53,15 @@ void SemanticLayer::onInitialize() {
                       class_radius_);
   declare_class_table(kInflationTable, {{"person", 1.0}, {"chair", 0.3}, {kDefaultClass, 0.2}},
                       class_inflation_);
+
+  // 1..252 so the semantic cost can never reach INSCRIBED (253) or LETHAL (254).
+  if (!valid_max_semantic_cost(max_semantic_cost)) {
+    throw std::invalid_argument("SemanticLayer " + name_ + ": max_semantic_cost must be in [1, " +
+                                std::to_string(kMaxNonObstacle) + "] (got " +
+                                std::to_string(max_semantic_cost) +
+                                "); semantic cost must never be inscribed (253) or lethal (254)");
+  }
+  max_semantic_cost_ = static_cast<std::uint8_t>(max_semantic_cost);
 
   if (!(decay_k_ >= 0.0) || !(obstacle_timeout_ > 0.0) || qos_depth < 1 ||
       !(log_throttle_period_ >= 0.0)) {
@@ -81,9 +95,11 @@ void SemanticLayer::onInitialize() {
       table += cls + " r=default infl=" + std::to_string(infl) + "; ";
     }
   }
-  RCLCPP_INFO(logger_, "SemanticLayer %s: %s on %s, k %.2f, timeout %.1f s, classes {%s}",
+  RCLCPP_INFO(logger_,
+              "SemanticLayer %s: %s on %s, k %.2f, max cost %d (non-lethal), timeout %.1f s, "
+              "classes {%s}",
               name_.c_str(), enabled_ ? "enabled" : "disabled", topic.c_str(), decay_k_,
-              obstacle_timeout_, table.c_str());
+              static_cast<int>(max_semantic_cost_), obstacle_timeout_, table.c_str());
 }
 
 void SemanticLayer::declare_class_table(const std::string& table,
@@ -119,7 +135,8 @@ ClassCostParams SemanticLayer::params_for(const std::string& class_name) const {
     const auto it = m.find(class_name);
     return it != m.end() ? it->second : m.at(kDefaultClass);
   };
-  return ClassCostParams{lookup(class_radius_), lookup(class_inflation_), decay_k_};
+  return ClassCostParams{lookup(class_radius_), lookup(class_inflation_), decay_k_,
+                         max_semantic_cost_};
 }
 
 void SemanticLayer::on_obstacles(

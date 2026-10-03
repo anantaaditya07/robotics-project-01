@@ -1,5 +1,7 @@
 // SemanticLayer: nav2_costmap_2d plugin that paints per-class costs around semantic obstacles
 // (architecture 7.3). The cost math lives in cost_model.hpp (ROS-free, unit-tested).
+// Deviation D-26: semantic cost is capped at max_semantic_cost (<= 252), never lethal; LiDAR (the
+// obstacle layer) is the only lethal source.
 #ifndef SEMNAV_COSTMAP__SEMANTIC_LAYER_HPP_
 #define SEMNAV_COSTMAP__SEMANTIC_LAYER_HPP_
 
@@ -61,6 +63,7 @@ class SemanticLayer : public nav2_costmap_2d::Layer {
   std::map<std::string, double> class_radius_;
   std::map<std::string, double> class_inflation_;
   double decay_k_ = 0.0;
+  std::uint8_t max_semantic_cost_ = kDefaultMaxSemanticCost;  // 1..252, never lethal (D-26)
   double obstacle_timeout_ = 0.0;
   double log_throttle_period_ = 0.0;
 

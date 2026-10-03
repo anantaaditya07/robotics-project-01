@@ -611,3 +611,14 @@ miss count frozen out of view), 1 view test.
 (7/15 goals with the layer vs 15/15 without) because ghost person tracks (fusion outliers beyond
 the 0.6 m gate) now persist; see docs/results.md. D-25 stays in place; track confirmation and
 same-class merging are the proposed follow-up (needs a decision).
+
+## D-26 Ghost-track suppression and non-lethal semantic cost  - ACCEPTED (user, 2026-10-03)
+
+1. Tracker (part 1, commit d1df9d8): publish confirmed tracks only (`min_hits` 3); unconfirmed
+   tracks expire after `tentative_max_age` 2 s; same-class tracks closer than the class footprint
+   diameter (2 * class_radius) are merged into the one with more hits (hits-weighted position).
+2. SemanticLayer (part 2), **deviation from architecture 7.3's LETHAL core**: semantic cost is
+   never lethal. Core cost = `max_semantic_cost` (default 200, valid 1..252, i.e. below
+   INSCRIBED 253), ring = round(max_semantic_cost * exp(-k (d - r))) out to class_inflation,
+   std::max combine unchanged. LiDAR (obstacle layer) stays the only source of lethal cost, so a
+   misplaced semantic track can raise path cost but can never block a route.

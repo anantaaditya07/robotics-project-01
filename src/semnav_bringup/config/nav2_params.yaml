@@ -213,10 +213,11 @@ local_costmap:
         enabled: True
         topic: /semantic_obstacles
         qos_depth: 5                # reliable, keep last
-        decay_k: 3.0                # 1/m, cost = 252*exp(-decay_k*(d-r)) for r < d <= r + class_inflation
+        decay_k: 3.0                # 1/m, cost = max_semantic_cost*exp(-decay_k*(d-r)) for r < d <= r + class_inflation
+        max_semantic_cost: 200      # D-26: core cost and ring start, 1..252, never lethal (LiDAR is the only lethal source)
         obstacle_timeout: 2.0       # s, expiry used only when an obstacle's ttl is zero (else stamp + ttl)
         log_throttle_period: 5.0    # s, TF error log throttle
-        class_radius:               # m, LETHAL core; must match perception_params.yaml class_radius
+        class_radius:               # m, core painted max_semantic_cost (D-26); must match perception_params.yaml class_radius
           person: 0.35
           chair: 0.25
           default: 0.3
@@ -281,10 +282,11 @@ global_costmap:
         enabled: True
         topic: /semantic_obstacles
         qos_depth: 5                # reliable, keep last
-        decay_k: 3.0                # 1/m, cost = 252*exp(-decay_k*(d-r)) for r < d <= r + class_inflation
+        decay_k: 3.0                # 1/m, cost = max_semantic_cost*exp(-decay_k*(d-r)) for r < d <= r + class_inflation
+        max_semantic_cost: 200      # D-26: core cost and ring start, 1..252, never lethal (LiDAR is the only lethal source)
         obstacle_timeout: 2.0       # s, expiry used only when an obstacle's ttl is zero (else stamp + ttl)
         log_throttle_period: 5.0    # s, TF error log throttle
-        class_radius:               # m, LETHAL core; must match perception_params.yaml class_radius
+        class_radius:               # m, core painted max_semantic_cost (D-26); must match perception_params.yaml class_radius
           person: 0.35
           chair: 0.25
           default: 0.3

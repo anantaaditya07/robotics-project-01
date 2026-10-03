@@ -1,5 +1,10 @@
 // Per-class semantic cost model and disc painting (architecture 7.3).
 // Plain STL, no ROS or Nav2 dependency, so it is unit-testable on its own.
+//
+// Accepted deviation from 7.3 (D-26): 7.3 paints the core LETHAL (254) and decays from 252.
+// Here semantic cost is NEVER lethal or inscribed: the core gets max_cost (1..252) and the ring
+// decays from max_cost. LiDAR (the obstacle layer) is the only lethal source; a semantic
+// obstacle only biases the planner, so a ghost track can no longer block a route.
 #ifndef SEMNAV_COSTMAP__COST_MODEL_HPP_
 #define SEMNAV_COSTMAP__COST_MODEL_HPP_
 
@@ -17,27 +22,39 @@ inline constexpr std::uint8_t kInscribedInflated = 253;
 inline constexpr std::uint8_t kLethal = 254;
 inline constexpr std::uint8_t kNoInformation = 255;
 
+// Default semantic cap, same as the layer's max_semantic_cost default. Non-lethal by design.
+inline constexpr std::uint8_t kDefaultMaxSemanticCost = 200;
+
 struct ClassCostParams {
-  double radius = 0.0;     // m, core radius painted LETHAL
+  double radius = 0.0;     // m, core radius painted max_cost (D-26, not LETHAL)
   double inflation = 0.0;  // m, decay band width beyond the core
-  double k = 0.0;          // 1/m, decay rate in 252*exp(-k*(d-r))
+  double k = 0.0;          // 1/m, decay rate in max_cost*exp(-k*(d-r))
+  // Core cost and decay start. Valid range 1..252 (checked by the layer); cost_at() also caps it
+  // at 252 so a semantic cost can never be INSCRIBED (253) or LETHAL (254).
+  std::uint8_t max_cost = kDefaultMaxSemanticCost;
 };
 
-// Cost at distance d (m) from the obstacle centre:
-//   d <= r                 -> LETHAL (254)
-//   r < d <= r + inflation -> round(252*exp(-k*(d-r))), clamped to [0, 252]
-//                             (never 253/254 in the decay zone)
+// Valid range for the layer's max_semantic_cost parameter: 1..252 (below INSCRIBED 253).
+inline bool valid_max_semantic_cost(int v) {
+  return v >= 1 && v <= static_cast<int>(kMaxNonObstacle);
+}
+
+// Cost at distance d (m) from the obstacle centre, with m = min(max_cost, 252):
+//   d <= r                 -> m
+//   r < d <= r + inflation -> round(m*exp(-k*(d-r))), clamped to [0, m] (continuous at r)
 //   beyond                 -> 0 (nothing to paint)
+// Never 253/254: LiDAR is the only lethal source (D-26).
 inline std::uint8_t cost_at(double d, const ClassCostParams& p) {
+  const std::uint8_t cap = std::min(p.max_cost, kMaxNonObstacle);
   if (d <= p.radius) {
-    return kLethal;
+    return cap;
   }
   if (d > p.radius + p.inflation) {
     return kFreeSpace;
   }
-  const double c = static_cast<double>(kMaxNonObstacle) * std::exp(-p.k * (d - p.radius));
-  const double clamped = std::clamp(std::round(c), 0.0, static_cast<double>(kMaxNonObstacle));
-  return static_cast<std::uint8_t>(clamped);
+  const double m = static_cast<double>(cap);
+  const double c = m * std::exp(-p.k * (d - p.radius));
+  return static_cast<std::uint8_t>(std::clamp(std::round(c), 0.0, m));
 }
 
 // Combine an existing master-grid cost with a semantic cost. std::max, so an existing cost is
