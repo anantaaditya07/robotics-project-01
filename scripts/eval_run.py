@@ -67,6 +67,7 @@ def main() -> int:
     st = {}
     metrics = {}
     goal_state = {'active': False}
+    track_ids = {c: set() for c in OBJECTS}  # distinct published track ids per class, this run
 
     def on_states(msg):
         st.update(dict(zip(msg.name, msg.pose)))
@@ -89,6 +90,9 @@ def main() -> int:
                 q.position.y + ox * math.sin(th) + oy * math.cos(th))
 
     def on_obstacles(msg):
+        for o in msg.obstacles:
+            if o.class_name in track_ids:
+                track_ids[o.class_name].add(o.id)
         if not goal_state['active']:
             return
         for cls in OBJECTS:
@@ -123,7 +127,7 @@ def main() -> int:
                      'min_person_clearance_m', 'person_err_m', 'chair_err_m'])
     if r_new:
         rw.writerow(['label', 'run', 'succeeded', 'goals', 'yolo_total_p50_ms',
-                     'yolo_total_p95_ms', 'yolo_fps'])
+                     'yolo_total_p95_ms', 'yolo_fps', 'person_tracks', 'chair_tracks'])
 
     def mean(v):
         return sum(v) / len(v) if v else float('nan')
@@ -131,6 +135,8 @@ def main() -> int:
     order = [int(i) for i in args.goals.split(',')] if args.goals else list(range(len(WAYPOINTS)))
     for run in range(1, args.runs + 1):
         ok = 0
+        for ids in track_ids.values():
+            ids.clear()
         for gi in order:
             x, y = WAYPOINTS[gi]
             goal = NavigateToPose.Goal()
@@ -164,7 +170,8 @@ def main() -> int:
             print(' '.join(str(v) for v in row), flush=True)
         m = metrics.get('last', [float('nan')] * 10)
         rw.writerow([args.label, run, ok, len(order), round(m[M_TOTAL_P50], 2),
-                     round(m[M_TOTAL_P95], 2), round(m[M_FPS], 2)])
+                     round(m[M_TOTAL_P95], 2), round(m[M_FPS], 2),
+                     len(track_ids['person']), len(track_ids['chair'])])
         rf.flush()
         print(f'run {run}: {ok}/{len(order)} succeeded', flush=True)
     gf.close()

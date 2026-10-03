@@ -72,3 +72,34 @@ PathAlign/PathDist 32), so the effect has to come from the global plan.
 
 **Next steps (not done):** confirm tracks before publishing (min hits), merge same-class tracks
 closer than the class footprint, shorter max_age for low-hit tracks, and re-run this A/B.
+
+## Targeted A/B after D-26 (confirmed/merged tracks, non-lethal semantic cost), 2026-10-03
+
+Same protocol as above (goals 3 -> 7, 3 runs per configuration, `EVAL_NAME=_targeted_d26`).
+Clearance and path are over **successful runs only**. Raw CSV: `data/eval/*_targeted_d26.csv`.
+
+| Goal | Config | Succeeded | Min clearance to person [m] (min / mean) | Path [m] mean (min-max) | Time [s] |
+|---|---|---|---|---|---|
+| 4 | semantic_on | 3/3 | +0.17 / +0.21 | 1.21 (1.16-1.27) | 15.6 |
+| 4 | semantic_off | 3/3 | +0.18 / +0.21 | 1.23 (1.21-1.27) | 14.1 |
+| 5 | semantic_on | 3/3 | +0.06 / +0.07 | 1.42 (1.38-1.46) | 15.5 |
+| 5 | semantic_off | 3/3 | +0.06 / +0.07 | 1.46 (1.41-1.53) | 16.6 |
+| 7 | semantic_on | 3/3 | +0.01 / +0.03 | 4.52 (4.49-4.56) | 32.4 |
+| 7 | semantic_off | 3/3 | +0.01 / +0.01 | 4.56 (4.47-4.74) | 29.6 |
+
+All goals of the sequence: semantic_on 15/15, semantic_off 15/15; 0 stale-TF errors in both.
+
+Distinct confirmed person track ids per run (one real person): on 3 / 3 / 6, off 3 / 5 / 4
+(chair: 1-2). These are ids over a whole ~2 min run, not simultaneous duplicates: a track removed
+by negative evidence (D-25) and re-detected later gets a new id. Simultaneous ghosts were not
+logged separately in this run.
+
+**Result: D-26 removed the harm (15/15 vs 7/15 before) but the layer still does not measurably
+help.** Clearance and path length on these routes are the same with and without the layer,
+within run-to-run spread. Likely reasons, not yet verified: (1) the routes past the person are
+geometrically constrained (pillar column x = 1.1 m, walls), so NavFn has no materially longer
+alternative that is cheaper; (2) a 200-capped ring decaying with k = 3 adds at most
+0.8 x 200 = 160 per cell in NavFn's 50 + 0.8 x cost metric, comparable to the static inflation
+already around the mapped person; (3) DWB follows the global path (obstacle critic 0.02 vs 32).
+Showing the intended "wider berth" needs either an open-floor scenario with a real detour
+option or a stronger/longer ring; it is not demonstrated by the current results.

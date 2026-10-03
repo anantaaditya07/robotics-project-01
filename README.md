@@ -253,9 +253,9 @@ Full numbers and method: [docs/results.md](docs/results.md).
 - Fused position error vs ground truth: person ~0.3 m, chair ~0.2 m mean (chair up to 0.58 m from
   one viewpoint).
 - **The semantic layer does not yet improve navigation.** With 2 s track expiry it had no
-  measurable effect (people left the costmap 2 s after leaving view). With persistent tracks
-  (D-25) it changes behaviour but blocks routes: on the routes past the person only 7/15 goals
-  succeeded with the layer vs 15/15 without, because ghost person tracks paint lethal discs.
-  Track confirmation/merging is the open next step.
+  measurable effect; with persistent tracks (D-25) ghost tracks blocked routes (7/15 goals). After
+  track confirmation/merging and capping semantic cost below lethal (D-26) the routes past the
+  person succeed 15/15 with and without the layer, with the same clearance and path length. The
+  intended wider berth around people is not demonstrated in this arena yet (see results.md).
 - Known limits: 2D LiDAR at ~0.17 m sees legs, not bodies (D-21, D-22); requires the tf2 0.25.24
   underlay on Humble (see Setup notes).
