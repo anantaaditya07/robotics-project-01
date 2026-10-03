@@ -1,0 +1,5 @@
+<library path="semnav_costmap">
+  <class type="semnav_costmap::SemanticLayer" base_class_type="nav2_costmap_2d::Layer">
+    <description>Per-class semantic costs (LETHAL core + exponential decay) around /semantic_obstacles (architecture 7.3).</description>
+  </class>
+</library>
