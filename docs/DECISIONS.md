@@ -583,3 +583,12 @@ in every healthy run), map->odom age -1.1..-0.8 s, CPU ~74 % idle.
    time; verified in safety_gate_node.cpp: steady_clock_.now() stored in each callback), and the
    publish timer is a wall timer. Consequence: a sim much slower than real time (RTF < ~0.67)
    can trip the 0.3 s scan watchdog with the 5 Hz LiDAR; observed RTF is 0.98-1.0.
+
+## D-24 Evaluation driver in Python (scripts/), not a C++ semnav_eval node  - ACCEPTED
+
+**Conflict:** D-10 (1) chose a C++ eval_logger_node in package semnav_eval; the Phase 8 request
+asked for `scripts/run_eval.sh`. **Final (accepted by user 2026-10-03):** the evaluation is
+tooling, not a robot node, so it lives in scripts/ like auto_map.py: `scripts/run_eval.sh`
+(A/B launcher), `scripts/eval_run.py` (NavigateToPose goal loop + metrics from
+/gazebo/model_states, /semantic_obstacles, /metrics), `scripts/eval_summary.py` (CSV ->
+docs/results.md). No robot-side behaviour depends on it.

@@ -166,11 +166,11 @@ Open questions blocking a phase are listed in docs/DECISIONS.md (D-xx).
 **Done when:** One command starts the full system.
 
 ## Phase 8 (Day 8) - Evaluation
-- [ ] World loads libgazebo_ros_state.so in namespace /gazebo -> /gazebo/model_states (D-04)
-- [ ] eval_logger_node in C++, package semnav_eval (D-10): latency p50/p95 + FPS from /metrics; position error per class
+- [x] World loads libgazebo_ros_state.so in namespace /gazebo -> /gazebo/model_states (D-04)
+- [x] Evaluation as scripts (D-24, replaces the C++ eval_logger_node of D-10): latency p50/p95 + FPS from /metrics; position error per class
       vs ground truth; NavigateToPose goal list -> success, time, path length, min clearance to people; CSV
-- [ ] A/B runs with semantic layer on/off, same goals
-- [ ] `scripts/run_eval.sh`
+- [x] A/B runs with semantic layer on/off, same goals (5 + 5 runs, 100/100 goals, docs/results.md)
+- [x] `scripts/run_eval.sh`
 
 **Done when:** Results table with real numbers.
 
