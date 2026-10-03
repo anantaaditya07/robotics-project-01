@@ -155,7 +155,7 @@ Verified from model.sdf / URDF (no namespace):
 
 | Item | Value |
 |---|---|
-| Image | `/camera/image_raw` (sensor_msgs/Image), frame `camera_rgb_frame` (see D-05) |
+| Image | `/camera/image_raw` (sensor_msgs/Image), frame `camera_rgb_frame` in the stock model; `camera_rgb_optical_frame` in semnav_waffle from Phase 2 (D-05) |
 | Camera info | `/camera/camera_info` |
 | Scan | `/scan`, frame `base_scan`, 5 Hz, 360 samples, angle 0 .. 6.28 rad, range 0.12 .. 3.5 m |
 | Odom | `/odom`, odom TF `odom -> base_footprint` from diff-drive plugin |
@@ -258,3 +258,33 @@ when `linear.x < 0`. Width and widening rule unchanged. Reason: with D-02, recov
 
 **Required test:** obstacle at 0.3 m behind + reverse command -> zero linear output; obstacle at
 0.3 m behind + forward command -> passthrough. Implemented in Phase 7.
+
+## D-14 No offline person/chair/bottle Gazebo models  - ACCEPTED
+
+**PDF (section 11):** use Gazebo models with realistic textures (person, chair, bottle) so COCO
+YOLO detects them in sim. Task rule: offline models only, ask before any download.
+
+**Finding (2026-10-03):** `~/.gazebo/models` holds only `ground_plane`, `sun`;
+`/usr/share/gazebo-11/models` the same; `turtlebot3_gazebo/models` has only TB3 robots/worlds.
+A filesystem search found no person/chair/bottle SDF/mesh anywhere. Fuel/model-database models
+would be fetched at runtime by gzserver (network), which the rule forbids without approval.
+
+**Options**
+- A. Approve a one-time download of specific textured models (e.g. from osrf/gazebo_models or
+  Gazebo Fuel: a standing person, a chair, a bottle), vendored into `semnav_bringup/models/`
+  with their licenses noted. Realistic textures -> best chance YOLO detects them (PDF intent).
+- B. Primitive placeholders (cylinder "person", box "chair", small cylinder "bottle") from SDF
+  only. Fully offline, ground-truth plumbing testable, but YOLO will almost certainly not detect
+  them -> Phase 2 "YOLO detects at least one class" fails; PDF fallback is a recorded video.
+- C. Build the world now with the state plugin only (no objects); add objects after a decision.
+
+**Recommendation:** A (smallest set: person, chair, bottle), with C as the interim step so the
+rest of Phase 2a can be built and committed.
+
+**Final (accepted 2026-10-03):** A, but kept **out of git**. `scripts/fetch_models.sh` downloads
+pinned versions into `src/semnav_bringup/models_external/` (gitignored, installed if present,
+added to GAZEBO_MODEL_PATH by sim.launch.py). Approved sources:
+- `person_standing`, `beer` (textured bottle): github.com/osrf/gazebo_models, CC-BY 3.0
+- `WoodenChair`: fuel.gazebosim.org OpenRobotics/WoodenChair, CC0
+Rejected: Fuel "Water Bottle" (.glb mesh, not loadable by Gazebo Classic 11).
+Consequence: a fresh clone needs network once (fetch script) before the world shows objects.

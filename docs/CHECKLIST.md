@@ -39,10 +39,19 @@ Open questions blocking a phase are listed in docs/DECISIONS.md (D-xx).
 - [ ] Build map with slam_toolbox online_async (Mode B); save with map_saver into semnav_bringup/maps
 - [ ] Bring up Nav2 + AMCL + map_server on saved map (Mode A); send 2D Goal Pose from RViz
 - [ ] Nav2 params based on nav2_bringup nav2_params.yaml + TB3 waffle overlay (D-03), load without errors
-- [ ] Copy waffle model into semnav_bringup: camera 640x480 @ 15 Hz,
-      frame_name camera_rgb_optical_frame (D-05, D-06)
+- [x] Copy waffle model into semnav_bringup (models/semnav_waffle): camera 640x480 @ 15 Hz,
+      frame_name camera_rgb_optical_frame (D-05, D-06); spawned by sim.launch.py
+- [x] Own world worlds/semnav_world.world: TB3 world + libgazebo_ros_state.so (ns /gazebo, 10 Hz)
+      + person_1 / chair_1 / bottle_1 in camera view from spawn (D-04, D-14); object models
+      fetched by `scripts/fetch_models.sh` into gitignored models_external/
+- [x] Verified headless (2026-10-03): /camera/image_raw 640x480 rgb8 frame camera_rgb_optical_frame
+      (~8 Hz measured at RTF 0.99, configured 15 Hz; render/CPU-limited); /camera/camera_info
+      640x480 fx 565.6 cx 320.5; /scan 4.8 Hz frame base_scan; /gazebo/model_states lists
+      ground_plane, turtlebot3_world, person_1, chair_1, bottle_1, waffle;
+      TF camera_rgb_optical_frame -> base_scan resolves
 - [ ] Python ONNX sanity check on sim camera frames (scripts/; needs onnxruntime/ultralytics, D-12)
-- [ ] YOLO export script `scripts/export_yolo.py` (YOLOv8n/YOLO11n, 640, opset 12-17)
+- [x] YOLO export script `scripts/export_yolo.py` (YOLOv8n, 640, opset 12, simplify; defaults match
+      existing models/yolov8n.onnx metadata; refuses overwrite without --force; real export not re-run)
 
 **Done when:** Robot reaches a goal; YOLO detects at least one object class in sim.
 

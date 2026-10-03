@@ -5,3 +5,6 @@ log/
 third_party/onnxruntime/
 *.onnx
 *.pt
+
+# Gazebo object models fetched by scripts/fetch_models.sh (D-14)
+src/semnav_bringup/models_external/
