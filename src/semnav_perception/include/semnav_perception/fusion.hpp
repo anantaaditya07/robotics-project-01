@@ -46,10 +46,15 @@ struct Params {
   double sector_fraction;  ///< central fraction of the bbox sector used, in (0, 1]
   double min_range;        ///< [m] lower range limit, combined with scan.range_min
   double max_range;        ///< [m] upper range limit, combined with scan.range_max
+  /// Fraction of the class radius the LiDAR point is pushed out along the ray, in [0, 1].
+  /// 1.0 = full radius (D-10 literal); smaller values compensate for the LiDAR hitting a part of
+  /// the object (e.g. legs) that is already behind its near surface. 1.0 if not set.
+  double push_out_fraction{1.0};
 };
 
 /// Throws std::invalid_argument if `p` is invalid:
-/// sector_fraction must be in (0, 1], min_range >= 0, min_range < max_range.
+/// sector_fraction must be in (0, 1], min_range >= 0, min_range < max_range,
+/// push_out_fraction in [0, 1].
 inline void validate(const Params& p) {
   if (!(p.sector_fraction > 0.0 && p.sector_fraction <= 1.0)) {
     throw std::invalid_argument("fusion: sector_fraction must be in (0, 1], got " +
@@ -62,6 +67,10 @@ inline void validate(const Params& p) {
   if (!(p.min_range < p.max_range)) {
     throw std::invalid_argument("fusion: min_range must be < max_range, got " +
                                 std::to_string(p.min_range) + " >= " + std::to_string(p.max_range));
+  }
+  if (!(p.push_out_fraction >= 0.0 && p.push_out_fraction <= 1.0)) {
+    throw std::invalid_argument("fusion: push_out_fraction must be in [0, 1], got " +
+                                std::to_string(p.push_out_fraction));
   }
 }
 
@@ -254,8 +263,8 @@ inline Result fuse(double u_min, double u_max, const Intrinsics& k, const Transf
   }
   res.range = median(valid);
 
-  // Step 5: push outward along the centre ray by the class radius (D-10).
-  const double d = res.range + radius;
+  // Step 5: push outward along the centre ray by a fraction of the class radius (D-10, D-21).
+  const double d = res.range + radius * params.push_out_fraction;
   res.x = d * std::cos(bearing);
   res.y = d * std::sin(bearing);
   res.status = Status::Ok;

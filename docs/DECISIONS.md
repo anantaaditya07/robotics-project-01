@@ -432,7 +432,7 @@ inference takes ~40 ms (p50) and the camera runs at 15 Hz; 0 frames dropped by t
 (SHM segment 10 MB + UDPv4, 8 MB socket buffers) exported as FASTRTPS_DEFAULT_PROFILES_FILE by the
 SemNav launch files; user raises UDP buffers via /etc/sysctl.d (sudo).
 
-## D-20 Nav2 server stops receiving map->odom from one TF publisher (DDS reader stall)  - OPEN
+## D-20 Nav2 server stops receiving map->odom from one TF publisher (DDS reader stall)  - OPEN (option B applied, did not fix)
 
 **Symptom (2026-10-03, Phase 5 verification):** with sim + AMCL + Nav2 + perception running,
 controller_server logged "Transform data too old when converting from map to odom" continuously
@@ -460,3 +460,50 @@ before the D-19 profile).
   RMW_IMPLEMENTATION=rmw_cyclonedds_cpp in launch files): new dependency, commonly used with Nav2
   on Humble; same soak test.
 - C. Investigate further first (soak with/without SHM, with/without perception) before choosing.
+
+**Final (accepted 2026-10-03):** B. Switch to CycloneDDS (`rmw_cyclonedds_cpp`, user installs
+`ros-humble-rmw-cyclonedds-cpp`). SemNav launch files set RMW_IMPLEMENTATION; shells running CLI
+tools/scripts export it too. Cyclone uses UDP on the same host (no SHM without iceoryx), so the
+D-19 sysctl buffer increase becomes mandatory. Verify with a soak test (Nav2 goal loop +
+perception) watching every Nav2 server for stale map->odom, and re-check image rate (15 Hz).
+
+**Update (2026-10-03, after the switch):** CycloneDDS did NOT fix it, so the DDS-reader-stall
+diagnosis was wrong; this decision stays open. 10-min soak (Cyclone, sim + AMCL + Nav2 +
+perception): 0/7 goals succeeded, controller_server logged 5,653 "Transform data too old" with its
+map->odom frozen at 94.598 s, and the local costmap's published_footprint stayed at 93.799 s
+(the controller_server process stopped taking in /tf). A separate listener saw map->odom fresh
+the whole time (age -1.0..-0.8 s). All controller threads idle in futex waits; no TF/clock
+warnings. Isolation, fresh launch each, 150 s, Cyclone:
+- A: no perception -> 10/10 SUCCEEDED, 2 startup TF errors
+- B: yolo_onnx_node + semantic_fusion_node -> 2/7, 286 stale-TF errors (froze at 67.2 s)
+- C: yolo_onnx_node only -> 10/10, 2
+- D: semantic_fusion_node only -> 9/9, 2
+So the stall needs both perception nodes running (fusion then processes detections and does TF
+lookups), independent of the DDS vendor. Root cause not yet found. Cyclone stays (images 15 Hz,
+behaviour unchanged). The user's Phase 2c failure (slam, RViz, no perception) may be a different
+trigger of the same symptom.
+
+## D-21 Push the fused point out by a fraction of the class radius  - ACCEPTED
+
+**Measurement (2026-10-03, teleported poses, AMCL re-seeded at truth, error <= 0.014 m):** with
+the full class radius (D-10), the person at 3.3 m came out +0.31 m too far (radial), i.e. about
+one class radius: the LiDAR (scan plane ~0.17 m) hits the legs, which are already near the
+person's centre. Chair: 0.05 m at 1.8 m, 0.15 m at 1.0 m.
+
+**Final (accepted by user 2026-10-03):** `push_out_fraction` parameter (default 0.5, range [0,1])
+in fusion::Params and semantic_fusion_node; 1.0 reproduces D-10 literally. Re-check with 0.5:
+person 3.3 m 0.15 m (+0.13 radial); chair 1.8 m 0.09 m (-0.08 radial); chair 1.0 m 0.11 m.
+
+## D-22 Close-range person: central-sector median ranges the wall between the legs  - OPEN
+
+**Measurement (2026-10-03):** person at 1.43 m -> fused 1.36 m too far (LiDAR median 2.68 m); at
+0.83 m -> 1.33 m too far (median 2.04 m). Beam dump at 1.43 m, central 60 % of the bbox sector
+(-5.4..+4.8 deg, 11 beams): 5 beams hit the legs at ~1.46 m, 6 pass between the legs to the wall
+at 2.68-2.79 m, so the median (PDF 7.2 step 4) is a wall range. At 3.3 m the legs fill the sector
+and the median is correct.
+
+**Options**
+- A. Nearest-cluster range: sort valid ranges, take the median of the nearest cluster (gap
+  threshold param, min beams param). Robust to background between/behind thin parts.
+- B. Lower percentile instead of median (param, e.g. 25th): simple; less robust to a near outlier.
+- C. Keep the median (PDF literal); state the limit in the README.

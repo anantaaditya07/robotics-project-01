@@ -57,6 +57,8 @@ class SemanticFusionNode : public rclcpp::Node {
     fusion_params_.sector_fraction = declare_parameter<double>("sector_fraction", 0.6);
     fusion_params_.min_range = declare_parameter<double>("min_range", 0.12);
     fusion_params_.max_range = declare_parameter<double>("max_range", 3.5);  // D-07
+    // D-21: fraction of the class radius to push out (1.0 = full radius, D-10 literal).
+    fusion_params_.push_out_fraction = declare_parameter<double>("push_out_fraction", 0.5);
     fusion::validate(fusion_params_);
     TrackerParams tp;
     tp.assoc_gate = declare_parameter<double>("assoc_gate", 0.6);
@@ -99,9 +101,11 @@ class SemanticFusionNode : public rclcpp::Node {
       radii += (radii.empty() ? "" : ", ") + name + " " + std::to_string(r).substr(0, 4);
     }
     RCLCPP_INFO(get_logger(),
-                "target_frame %s, sector_fraction %.2f, range [%.2f, %.2f] m, gate %.2f m, ttl "
+                "target_frame %s, sector_fraction %.2f, push_out_fraction %.2f, range [%.2f, %.2f] "
+                "m, gate %.2f m, ttl "
                 "%.1f s, alpha %.2f, class_radius {%s}",
-                target_frame_.c_str(), fusion_params_.sector_fraction, fusion_params_.min_range,
+                target_frame_.c_str(), fusion_params_.sector_fraction,
+                fusion_params_.push_out_fraction, fusion_params_.min_range,
                 fusion_params_.max_range, tp.assoc_gate, tp.ttl, tp.smoothing_alpha, radii.c_str());
   }
 

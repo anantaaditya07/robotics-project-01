@@ -23,6 +23,7 @@ semantic_fusion_node:
     assoc_gate: 0.6            # m
     ttl: 2.0                   # s
     smoothing_alpha: 0.5
+    push_out_fraction: 0.5     # D-21: push the LiDAR point out by this fraction of class_radius
     class_radius:              # m, per class; "default" for any other class (7.2, D-10)
       person: 0.35
       chair: 0.25

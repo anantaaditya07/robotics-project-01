@@ -120,10 +120,11 @@ Open questions blocking a phase are listed in docs/DECISIONS.md (D-xx).
 - [x] Publish /semantic_obstacles (frame map, reliable depth 5) and /semantic_markers
 - [x] Parameters: class_radius map (person 0.35, chair 0.25, default 0.3), min/max_range,
       sector_fraction, assoc_gate, ttl, smoothing_alpha (config/perception_params.yaml)
-- [ ] Live accuracy vs /gazebo/model_states - partial (2026-10-03): spawn pose chair 0.09 m,
-      person 0.35 m (3.3 m away, over-push); 1.07 m from chair 0.23 m; near-person pose blocked by
-      D-20 (Nav2 lost map->odom). See report.
-- [x] GoogleTest for projection / sector / median / tracker (test_fusion 17, test_tracker 16)
+- [ ] Live accuracy vs /gazebo/model_states (teleported poses, AMCL re-seeded, 2026-10-03,
+      push_out_fraction 0.5, D-21): person 3.3 m 0.15 m; chair 1.8 m 0.09 m; chair 1.0 m 0.11 m.
+      OPEN: person at 1.4 / 0.8 m off by 1.36 / 1.33 m (legs gap, D-22)
+- [ ] OPEN D-20: Nav2 controller_server stops taking in /tf when yolo + fusion both run
+- [x] DDS: CycloneDDS for all SemNav processes (D-20), config/cyclonedds.xml; images 15 Hz
 
 **Done when:** Markers sit on the right objects in RViz.
 

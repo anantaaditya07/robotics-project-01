@@ -322,6 +322,35 @@ TEST(FusionPushOut, MedianPlusRadiusAlongBearing) {
   EXPECT_NEAR(r.y, 0.0, kRangeTol);
 }
 
+TEST(FusionPushOut, FractionOfRadius) {
+  // Median 2.0 at bearing 0, radius 0.35, push_out_fraction 0.5 -> (2.0 + 0.175, 0) = (2.175, 0);
+  // fraction 0 -> the LiDAR point itself (2.0, 0). `range` is unchanged (2.0) in both cases.
+  const std::vector<float> ranges(kBeams, 2.0F);
+  fu::Params half = defaultParams();
+  half.push_out_fraction = 0.5;
+  const auto r =
+      fu::fuse(kCx - 50.0, kCx + 50.0, simCamera(), forwardCamera(), tb3Scan(), ranges, 0.35, half);
+  ASSERT_TRUE(r.ok());
+  EXPECT_NEAR(r.range, 2.0, kRangeTol);
+  EXPECT_NEAR(r.x, 2.175, kRangeTol);
+  fu::Params none = defaultParams();
+  none.push_out_fraction = 0.0;
+  const auto r0 =
+      fu::fuse(kCx - 50.0, kCx + 50.0, simCamera(), forwardCamera(), tb3Scan(), ranges, 0.35, none);
+  ASSERT_TRUE(r0.ok());
+  EXPECT_NEAR(r0.x, 2.0, kRangeTol);
+}
+
+TEST(FusionPushOut, FractionOutsideUnitIntervalThrows) {
+  fu::Params p = defaultParams();
+  p.push_out_fraction = -0.1;
+  EXPECT_THROW(fu::validate(p), std::invalid_argument);
+  p.push_out_fraction = 1.1;
+  EXPECT_THROW(fu::validate(p), std::invalid_argument);
+  p.push_out_fraction = 1.0;
+  EXPECT_NO_THROW(fu::validate(p));
+}
+
 // ---------------------------------------------------------------- failures
 
 TEST(FusionFailure, AllInvalidGivesNoValidRanges) {
