@@ -36,9 +36,18 @@ Open questions blocking a phase are listed in docs/DECISIONS.md (D-xx).
 **Done when:** Teleop works; camera and scan visible in RViz.
 
 ## Phase 2 (Day 2) - Map, Nav2, YOLO sanity check
-- [ ] USER: build map with slam_toolbox online_async (Mode B) by teleop; save with scripts/save_map.sh
-      On this machine launch with `rviz_software_gl:=true` (D-17: RViz Map shader fails on Intel GL)
-- [ ] Bring up Nav2 + AMCL + map_server on saved map (Mode A); send 2D Goal Pose from RViz
+- [x] Map built autonomously (2026-10-03): `scripts/auto_map.py` derives 10 waypoints from the world
+      file (0.5 m clearance), 10/10 NavigateToPose SUCCEEDED under mapping + navigation (headless,
+      /clock 1 publisher); slam vs ground truth <= 0.034 m / 0.6 deg; map->odom never stale.
+      Saved maps/semnav_world.{pgm,yaml}. Map check: outer wall closed (flood fill from spawn stays
+      inside), 9/9 pillars (centroid offset <= 0.08 m), occupied cells vs true surfaces median
+      0.017 m, p90 0.049 m, 100 % within 0.1 m, best-fit offset 0.26 deg / 0.026 m.
+      (For RViz on this machine use rviz_software_gl:=true, D-17)
+- [x] Bring up Nav2 + AMCL + map_server on saved map (Mode A): launch/localization.launch.py
+      (map_server + amcl, default map maps/semnav_world.yaml). Verified headless 2026-10-03: initial
+      pose (-2.0, -0.5) on /initialpose, goal (1.75, 0.55) SUCCEEDED, AMCL map->base_footprint vs
+      ground truth 0.081 m / 1.9 deg
+- [ ] USER: send a 2D Goal Pose from RViz in Mode A
 - [x] Nav2 params based on nav2_bringup nav2_params.yaml + TB3 waffle overlay (D-03), load without errors
       (config/nav2_params.yaml: NavFn, DWB, local obstacle+inflation, global static+obstacle+inflation,
       no velocity_smoother; TB3 humble waffle max_vel_x 0.22) - verified 2026-10-03
