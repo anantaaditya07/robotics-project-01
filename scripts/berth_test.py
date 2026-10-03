@@ -99,7 +99,9 @@ def main() -> int:
         rclpy.spin_until_future_complete(n, f)
         r = f.result().get_result_async()
         rclpy.spin_until_future_complete(n, r, timeout_sec=120)
-        return {4: 'SUCCEEDED', 6: 'ABORTED'}.get(r.result().status, 'OTHER') if r.done() else 'TIMEOUT'
+        if not r.done():
+            return 'TIMEOUT'
+        return {4: 'SUCCEEDED', 6: 'ABORTED'}.get(r.result().status, 'OTHER')
 
     def spin(t):
         end = time.time() + t
