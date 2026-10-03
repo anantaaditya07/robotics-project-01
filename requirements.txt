@@ -1,0 +1,8 @@
+# Isolated tooling venv (model export + offline checks). Not used by the ROS nodes.
+# torch/torchvision: install CPU wheels first with
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+numpy<2
+ultralytics
+onnx
+onnxruntime
+opencv-python-headless
