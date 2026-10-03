@@ -261,3 +261,15 @@ Full numbers and method: [docs/results.md](docs/results.md).
   A wider berth around people is not demonstrated; see results.md (costmap/plan images).
 - Known limits: 2D LiDAR at ~0.17 m sees legs, not bodies (D-21, D-22); requires the tf2 0.25.24
   underlay on Humble (see Setup notes).
+
+## Known issues and future work
+
+1. **Semantic berth not demonstrated.** The general inflation layer (global `inflation_radius`
+   0.55 m, `cost_scaling_factor` 3.0) already makes almost the whole arena high cost between
+   pillars 1.1 m apart and the walls, so the SemanticLayer's ring (capped at 200, D-26) adds no
+   cost contrast and the global plan is unchanged (see the D-28 costmap/plan images in
+   [docs/results.md](docs/results.md)). Future work: tune inflation radius / cost_scaling so open
+   floor is cheap, or use a larger arena, then repeat the A/B to show the wider berth.
+2. **Open-world runs 2-3 stalled near the person (D-28, layer on).** The safety gate repeatedly
+   stopped the robot ("obstacle within d_stop"), the controller reported "Failed to make
+   progress", and both lifecycle managers then reported a server heartbeat loss. Not yet analysed.
