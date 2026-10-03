@@ -1,0 +1,112 @@
+<?xml version="1.0"?>
+<!--
+  SemNav world: turtlebot3_world (turtlebot3_gazebo) plus COCO-detectable objects
+  (person, chair, bottle) and the gazebo_ros_state plugin for ground truth (D-04, D-14).
+
+  Requires GAZEBO_MODEL_PATH to contain:
+    semnav_bringup/models_external  (person_standing, beer, WoodenChair; scripts/fetch_models.sh)
+    turtlebot3_gazebo/models        (turtlebot3_world)
+
+  Layout notes (world frame): turtlebot3_world pillars (r = 0.15 m) sit on the grid
+  x, y in {-1.1, 0, 1.1}; the inner hexagonal wall is at x ~ +/-2.5 m around y = -0.5.
+  Robot spawns at (-2.0, -0.5), yaw 0; camera_rgb_frame is at about (-1.93, -0.55, 0.12),
+  HFOV 1.03 rad, VFOV 0.80 rad. All objects lie in the gap between pillar rows y = 0 and
+  y = -1.1, inside the camera view and within the 3.5 m LiDAR range at spawn.
+-->
+<sdf version="1.6">
+  <world name="default">
+
+    <!-- Publishes /gazebo/model_states and /gazebo/link_states (ground truth for eval, D-04)
+         and serves /gazebo/get_entity_state, /gazebo/set_entity_state.
+         10 Hz: enough for evaluation, cheap compared with the 1 kHz physics loop. -->
+    <plugin name="gazebo_ros_state" filename="libgazebo_ros_state.so">
+      <ros>
+        <namespace>/gazebo</namespace>
+      </ros>
+      <update_rate>10.0</update_rate>
+    </plugin>
+
+    <include>
+      <uri>model://ground_plane</uri>
+    </include>
+
+    <include>
+      <uri>model://sun</uri>
+    </include>
+
+    <scene>
+      <shadows>false</shadows>
+    </scene>
+
+    <gui fullscreen='0'>
+      <camera name='user_camera'>
+        <pose frame=''>0.319654 -0.235002 9.29441 0 1.5138 0.009599</pose>
+        <view_controller>orbit</view_controller>
+        <projection_type>perspective</projection_type>
+      </camera>
+    </gui>
+
+    <physics type="ode">
+      <real_time_update_rate>1000.0</real_time_update_rate>
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1</real_time_factor>
+      <ode>
+        <solver>
+          <type>quick</type>
+          <iters>150</iters>
+          <precon_iters>0</precon_iters>
+          <sor>1.400000</sor>
+          <use_dynamic_moi_rescaling>1</use_dynamic_moi_rescaling>
+        </solver>
+        <constraints>
+          <cfm>0.00001</cfm>
+          <erp>0.2</erp>
+          <contact_max_correcting_vel>2000.000000</contact_max_correcting_vel>
+          <contact_surface_layer>0.01000</contact_surface_layer>
+        </constraints>
+      </ode>
+    </physics>
+
+    <model name="turtlebot3_world">
+      <static>1</static>
+      <include>
+        <uri>model://turtlebot3_world</uri>
+      </include>
+    </model>
+
+    <!-- semnav_world_open (D-28): person moved to the open floor left of pillar column x = -1.1
+         (footprint centre ~(-1.85, 0.0)), so routes from (-2.0, -0.95) to (-2.0, 0.95) must detour
+         and have room to do so on the wall side. Original placement comment follows.
+         Person: 3.3 m ahead of the camera, just past pillar column x = 1.1, centred in the
+         gap between pillars (1.1, 0) and (1.1, -1.1). Mesh faces -y, so yaw -pi/2 turns it
+         toward the robot. At spawn the camera sees the person up to ~1.5 m (legs and torso,
+         head cut off); the head needs >= 4 m distance, which would be out of LiDAR range. -->
+    <include>
+      <name>person_1</name>
+      <uri>model://person_standing</uri>
+      <static>true</static>
+      <pose>-1.78 0.0 0 0 0 -1.5708</pose>
+    </include>
+
+    <!-- Chair (0.79 m tall): 1.6 m ahead, 0.45 m to the right, between pillar columns
+         x = -1.1 and x = 0 next to the y = -1.1 row, so the y ~ -0.5 lane stays open.
+         Mesh faces +x; yaw 2.5 rad shows the seat at a three-quarter angle to the camera.
+         Fully in view (top of view at that range ~0.85 m). -->
+    <include>
+      <name>chair_1</name>
+      <uri>model://WoodenChair</uri>
+      <static>true</static>
+      <pose>-0.3 -1.0 0 0 0 2.5</pose>
+    </include>
+
+    <!-- Bottle (0.23 m tall cylinder): on the floor 1.3 m ahead, slightly left, not in front
+         of the person or the chair. Leaves ~0.5 m of free lane to its right. -->
+    <include>
+      <name>bottle_1</name>
+      <uri>model://beer</uri>
+      <static>true</static>
+      <pose>-0.6 -0.4 0 0 0 0</pose>
+    </include>
+
+  </world>
+</sdf>

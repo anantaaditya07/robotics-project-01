@@ -254,9 +254,10 @@ Full numbers and method: [docs/results.md](docs/results.md).
   one viewpoint).
 - **The semantic layer does not yet improve navigation.** With 2 s track expiry it had no
   measurable effect; with persistent tracks (D-25) ghost tracks blocked routes (7/15 goals). After
-  track confirmation/merging and non-lethal semantic cost (D-26), and with the objects removed
-  from the static map so it cannot mask the layer (D-27), all goals succeed with and without the
-  layer, but clearance to the person and path length are the same within noise. The intended
-  wider berth around people is not demonstrated yet; see results.md for the analysis.
+  track confirmation/merging and non-lethal semantic cost (D-26) and with the objects removed from
+  the static map (D-27), all goals succeed with and without the layer, with the same clearance
+  and path length. An open-floor detour test (D-28) showed the same: the global inflation already
+  makes almost the whole arena high cost, so the semantic ring adds no contrast for the planner.
+  A wider berth around people is not demonstrated; see results.md (costmap/plan images).
 - Known limits: 2D LiDAR at ~0.17 m sees legs, not bodies (D-21, D-22); requires the tf2 0.25.24
   underlay on Humble (see Setup notes).

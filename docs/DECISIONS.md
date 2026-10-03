@@ -634,3 +634,11 @@ never touching cells within 0.12 m of a pillar surface (the chair stands 0.15 m 
 (0, -1.1)). Result: 54 cells cleared (person 23, chair 23, bottle 8; 780 -> 726 occupied). The
 original map is kept as maps/semnav_world_with_objects.{pgm,yaml}. Live LiDAR (obstacle layer)
 still marks the objects lethal; the SemanticLayer adds the class rings.
+
+## D-28 Open-floor detour test world  - ACCEPTED (user, 2026-10-03)
+
+`worlds/semnav_world_open.world` (person moved to (-1.78, 0.0) pose, footprint centre ~(-1.85, 0))
+and `semnav.launch.py world:=` argument; `scripts/berth_test.py` drives one goal pair past the
+person and saves the global costmap + first plan as PNG. Result: no wider berth (see
+docs/results.md); the global inflation saturates the arena's free floor. Default demo world stays
+semnav_world.

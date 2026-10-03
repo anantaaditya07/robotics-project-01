@@ -138,3 +138,35 @@ and controller, not the map: NavFn's 50 + 0.8 x cost metric with a 200-capped ri
 with k = 3 (cost < 100 beyond ~0.6 m from the person centre), the constrained route geometry
 around pillar column x = 1.1, and DWB's weak obstacle critic (0.02 vs 32 for path following).
 Next diagnostic (not done): plot the global plan and costmap with the layer on vs off on goal 7.
+
+## D-28: open-floor detour test (semnav_world_open), 2026-10-03
+
+`worlds/semnav_world_open.world` = semnav_world with the person moved to the open floor left of
+pillar column x = -1.1 (footprint centre ~(-1.85, 0.0)); same map (D-27, objects not in it).
+`scripts/berth_test.py`: from START (-2.0, -0.95) facing the person (4 s to detect/confirm) to
+GOAL (-2.0, 0.95); the straight line passes 0.15 m from the person, so the robot must detour.
+
+| Config | Run | Result | Min clearance to person [m] | Path [m] |
+|---|---|---|---|---|
+| semantic_off | 1 | SUCCEEDED | -0.161 | 1.75 |
+| semantic_off | 2 | SUCCEEDED | -0.166 | 1.80 |
+| semantic_off | 3 | SUCCEEDED | -0.149 | 2.32 |
+| semantic_on | 1 | SUCCEEDED | -0.192 | 1.69 |
+| semantic_on | 2-3 | not completed | - | - |
+
+(Clearance -0.16 m = robot centre ~0.41 m from the person centre.) With the layer on, run 1 shows
+no wider berth; runs 2-3 did not complete: the robot stalled near the person (safety gate
+"obstacle within d_stop" 20x, controller "Failed to make progress" 8x) and both lifecycle
+managers then reported a server heartbeat loss; not analysed. The planned second try (person
+class_inflation 1.2 m, slower decay) was not run (time box).
+
+Global costmap and first global plan at planning time (green = person footprint centre):
+![semantic on](img/d28_costmap_plan_semantic_on.png) ![semantic off](img/d28_costmap_plan_semantic_off.png)
+
+**Finding from the images:** the plans are the same, and almost the entire arena interior is
+already high cost (dark): the global inflation layer (radius 0.55 m, cost_scaling_factor 3.0)
+around pillars 1.1 m apart and the walls leaves very little low-cost floor, so a semantic ring
+capped at 200 adds no cost contrast for NavFn to route around. In this arena the semantic layer
+cannot produce a wider berth without changing the inflation/cost balance (e.g. a smaller global
+inflation radius or higher cost_scaling_factor so free floor is cheap, or a larger arena), which
+is a tuning decision, not done here.

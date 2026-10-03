@@ -44,6 +44,7 @@ def generate_launch_description():
     nav2_params = LaunchConfiguration('nav2_params')
     perception_params = LaunchConfiguration('perception_params')
     stack_delay = LaunchConfiguration('stack_delay')
+    world = LaunchConfiguration('world')
 
     declare_args = [
         DeclareLaunchArgument('gui', default_value='true', description='Start gzclient'),
@@ -56,6 +57,9 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'map', default_value=os.path.join(bringup_dir, 'maps', 'semnav_world.yaml'),
             description='Saved map for map_server + AMCL'),
+        DeclareLaunchArgument(
+            'world', default_value=os.path.join(bringup_dir, 'worlds', 'semnav_world.world'),
+            description='Gazebo world (semnav_world_open.world: person on open floor, D-28)'),
         DeclareLaunchArgument('x_pose', default_value='-2.0', description='Spawn / AMCL x (m)'),
         DeclareLaunchArgument('y_pose', default_value='-0.5', description='Spawn / AMCL y (m)'),
         DeclareLaunchArgument('yaw', default_value='0.0', description='AMCL initial yaw (rad)'),
@@ -78,7 +82,7 @@ def generate_launch_description():
 
     sim = include('sim.launch.py', {
         'gui': gui, 'rviz': rviz, 'rviz_software_gl': rviz_software_gl,
-        'use_sim_time': use_sim_time, 'x_pose': x_pose, 'y_pose': y_pose})
+        'use_sim_time': use_sim_time, 'x_pose': x_pose, 'y_pose': y_pose, 'world': world})
     stack = TimerAction(period=stack_delay, actions=[
         include('localization.launch.py', {
             'map': map_yaml, 'use_sim_time': use_sim_time, 'params_file': nav2_params,
