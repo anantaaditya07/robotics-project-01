@@ -11,7 +11,7 @@ Open questions blocking a phase are listed in docs/DECISIONS.md (D-xx).
       (Gazebo 11.10.2), vision_msgs 4.1.1, slam_toolbox 2.6.10, OpenCV 4.5.4, clang-format 14,
       ament_cmake_gtest, launch_testing, message_filters, pluginlib
 - [x] Interface checks recorded in DECISIONS.md (D-01 .. D-12)
-- [ ] User decisions on DECISIONS.md items marked "NEEDS DECISION"
+- [x] User decisions recorded: D-01 .. D-13 ACCEPTED (2026-10-03)
 
 **Done when:** all blocking decisions answered.
 
@@ -26,7 +26,9 @@ Open questions blocking a phase are listed in docs/DECISIONS.md (D-xx).
 ## Phase 2 (Day 2) - Map, Nav2, YOLO sanity check
 - [ ] Build map with slam_toolbox online_async (Mode B); save with map_saver into semnav_bringup/maps
 - [ ] Bring up Nav2 + AMCL + map_server on saved map (Mode A); send 2D Goal Pose from RViz
-- [ ] Nav2 base params chosen (D-03) and loads without errors
+- [ ] Nav2 params based on nav2_bringup nav2_params.yaml + TB3 waffle overlay (D-03), load without errors
+- [ ] Copy waffle model into semnav_bringup: camera 640x480 @ 15 Hz,
+      frame_name camera_rgb_optical_frame (D-05, D-06)
 - [ ] Python ONNX sanity check on sim camera frames (scripts/; needs onnxruntime/ultralytics, D-12)
 - [ ] YOLO export script `scripts/export_yolo.py` (YOLOv8n/YOLO11n, 640, opset 12-17)
 
@@ -57,7 +59,8 @@ Open questions blocking a phase are listed in docs/DECISIONS.md (D-xx).
 - [ ] Cache intrinsics (fx, cx) from /camera/camera_info
 - [ ] Header-only fusion.hpp: bbox u-span -> optical rays -> laser-frame yaw sector; central
       sector_fraction (60%); reject invalid ranges; median; position; class-radius padding (D-10)
-- [ ] TF lookup camera optical -> base_scan at image stamp (frame name per D-05); never hard-coded
+- [ ] TF lookup image-header frame -> laser frame at image stamp; no hard-coded frame names;
+      unresolved TF fails loudly and drops the detection (D-05)
 - [ ] Scan ring buffer, pick closest stamp (or ApproximateTime, slop 0.1 s)
 - [ ] Header-only tracker.hpp: NN association per class with gate 0.6 m, smoothing_alpha, ids,
       miss counter, ttl 2 s
@@ -84,15 +87,18 @@ Open questions blocking a phase are listed in docs/DECISIONS.md (D-xx).
 - [ ] Header-only gate logic: forward cone min range (+/-30 deg, widened with angular speed),
       s = clamp((d - d_stop)/(d_slow - d_stop), 0, 1), v = s * v_cmd, angular kept
 - [ ] 20 Hz timer publish; watchdog (0.5 s cmd, 0.3 s scan) -> zero; accel limiter
-- [ ] GoogleTest: wall at 0.3 m -> zero; far scan -> passthrough
-- [ ] Remap so gate is the only /cmd_vel publisher (D-01, D-02)
+- [ ] Cone direction follows sign of linear.x: forward cone forward, rear cone reversing (D-13, deviation)
+- [ ] GoogleTest: wall at 0.3 m -> zero; far scan -> passthrough; obstacle behind + reverse -> zero,
+      obstacle behind + forward -> passthrough (D-13)
+- [ ] Own navigation launch without velocity_smoother; controller and behavior_server remapped to
+      /cmd_vel_nav; gate is the only /cmd_vel publisher (D-01, D-02)
 - [ ] semnav_bringup: one launch file starts Gazebo, Nav2, perception, fusion, gate, RViz
 
 **Done when:** One command starts the full system.
 
 ## Phase 8 (Day 8) - Evaluation
-- [ ] Ground-truth source in the world (D-04)
-- [ ] eval_logger_node (language per D-10): latency p50/p95 + FPS from /metrics; position error per class
+- [ ] World loads libgazebo_ros_state.so in namespace /gazebo -> /gazebo/model_states (D-04)
+- [ ] eval_logger_node in C++, package semnav_eval (D-10): latency p50/p95 + FPS from /metrics; position error per class
       vs ground truth; NavigateToPose goal list -> success, time, path length, min clearance to people; CSV
 - [ ] A/B runs with semantic layer on/off, same goals
 - [ ] `scripts/run_eval.sh`

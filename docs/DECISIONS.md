@@ -7,7 +7,7 @@ gazebo_ros 3.9.0 / Gazebo 11.10.2, vision_msgs 4.1.1, OpenCV 4.5.4.
 
 ---
 
-## D-01 Who publishes /cmd_vel in Nav2 bringup (velocity_smoother)  - NEEDS DECISION
+## D-01 Who publishes /cmd_vel in Nav2 bringup (velocity_smoother)  - ACCEPTED
 
 **PDF:** controller output remapped to /cmd_vel_nav; safety_gate_node is the *only* publisher of
 /cmd_vel (sections 4, 6, 8).
@@ -31,7 +31,10 @@ So with stock bringup, the safety gate and velocity_smoother would both publish 
 
 **Recommendation:** A. Topics and node list stay exactly as the PDF.
 
-## D-02 behavior_server (spin/backup) bypasses the safety gate  - NEEDS DECISION
+**Final (accepted 2026-10-03):** A. Own navigation launch in semnav_bringup, no velocity_smoother;
+controller -> /cmd_vel_nav; safety_gate_node is the only /cmd_vel publisher.
+
+## D-02 behavior_server (spin/backup) bypasses the safety gate  - ACCEPTED (with deviation)
 
 **Finding:** in the same launch file `behavior_server` gets only the tf remaps (line 152), and
 `libnav2_spin_behavior.so` publishes on relative `cmd_vel`. So recoveries (spin, backup) publish
@@ -46,7 +49,13 @@ straight to **/cmd_vel**, bypassing the gate. The PDF requires default recoverie
 
 **Recommendation:** A (part of the same custom launch as D-01).
 
-## D-03 TurtleBot3 Humble Nav2 params file is stale  - NEEDS DECISION
+**Final (accepted 2026-10-03):** A, plus an addition that is a **deviation from the PDF**:
+safety_gate_node picks its cone by the sign of `linear.x` - forward cone when moving forward,
+rear cone when reversing - so recoveries such as backup are also gated. The PDF only specifies a
+forward cone (section 7.4). Requires a unit test: reverse command with an obstacle close behind ->
+output zero; same obstacle behind while moving forward -> passthrough. See D-13.
+
+## D-03 TurtleBot3 Humble Nav2 params file is stale  - ACCEPTED
 
 **PDF:** "Use the TurtleBot3 Nav2 params as the base and change only what you need."
 
@@ -66,7 +75,10 @@ config in the file is ignored. Not yet run, so failure modes are unverified.
 
 **Recommendation:** A. Slight deviation from wording ("TurtleBot3 params as the base"), same intent.
 
-## D-04 Gazebo ground-truth poses  - NEEDS DECISION
+**Final (accepted 2026-10-03):** A. Base on `nav2_bringup/params/nav2_params.yaml`, overlay
+TurtleBot3 waffle values.
+
+## D-04 Gazebo ground-truth poses  - ACCEPTED
 
 **PDF:** ground truth from `/gazebo/model_states` (section 4), used only by eval.
 
@@ -88,7 +100,10 @@ turtlebot3_gazebo worlds include it. `libgazebo_ros_p3d.so` (per-model odometry)
 **Recommendation:** A. Needs our own world anyway for person/chair/bottle models (section 11).
 Adds dependency `gazebo_msgs` to semnav_eval (implied by the PDF topic; confirm).
 
-## D-05 Camera image frame_id is not an optical frame  - NEEDS DECISION
+**Final (accepted 2026-10-03):** A. Own world with `libgazebo_ros_state.so`, namespace `/gazebo`
+(-> `/gazebo/model_states`). `gazebo_msgs` dependency approved.
+
+## D-05 Camera image frame_id is not an optical frame  - ACCEPTED
 
 **PDF:** fusion builds rays `((u-cx)/fx, 0, 1)` in the optical frame and asks TF2 for
 `camera_optical -> base_scan` at the image stamp. TF tree lists `camera_link -> camera_rgb_optical_frame`.
@@ -110,7 +125,15 @@ Minor: actual chain has `camera_rgb_frame` between `camera_link` and the optical
 
 **Recommendation:** B if D-06 copies the SDF anyway (data is then self-describing); otherwise A.
 
-## D-06 Camera resolution and rate  - NEEDS DECISION
+**Final (accepted 2026-10-03):** B. In the copied waffle model (D-06) set
+`<frame_name>camera_rgb_optical_frame</frame_name>`; done in Phase 2. Additional rules for
+semantic_fusion_node:
+- Read the camera frame from the image (detection) header; no hard-coded frame names anywhere.
+- If TF cannot resolve header frame -> laser frame at the stamp, fail loudly (error log, drop the
+  detection; never fall back to a guessed transform).
+- fx and cx always come from /camera/camera_info, never from parameters or constants.
+
+## D-06 Camera resolution and rate  - ACCEPTED
 
 **Finding:** waffle camera is **1920x1080 @ 30 Hz**, horizontal_fov 1.02974 rad (~59 deg),
 gaussian noise. The PDF mitigation (section 11) is 640x480 @ 15 Hz. Achieving that requires a
@@ -123,7 +146,10 @@ modified copy of the robot model (SDF) in semnav_bringup, spawned instead of the
 
 **Recommendation:** A (do it in Phase 1/2 so map and tests use the final sensor).
 
-## D-07 TurtleBot3 waffle topic names, frames, sensor limits  - INFO (+ one conflict)
+**Final (accepted 2026-10-03):** A. Copy the waffle model into semnav_bringup, 640x480 @ 15 Hz,
+camera frame per D-05. Done in Phase 2 (Phase 1 uses the stock model).
+
+## D-07 TurtleBot3 waffle topic names, frames, sensor limits  - ACCEPTED
 
 Verified from model.sdf / URDF (no namespace):
 
@@ -146,7 +172,11 @@ Matches PDF names. Notes:
 - PDF QoS for /camera/image_raw: "depth 5" (section 2) vs "depth 1-2" (section 6). Recommend 1-2
   (sec. 6, more specific), as a parameter.
 
-## D-08 vision_msgs Detection2D field layout  - INFO
+**Final (accepted 2026-10-03):** as recommended. Evaluate position error over 1-3.5 m and state
+the LiDAR limit in the README (sim LiDAR range unchanged). Image subscription QoS depth 1-2 as a
+parameter. Scan-angle wrap-around handled in fusion and gate.
+
+## D-08 vision_msgs Detection2D field layout  - ACCEPTED
 
 Installed vision_msgs **4.1.1** (Humble). Layout:
 ```
@@ -164,7 +194,10 @@ Implications (older tutorials are wrong for this version):
   to `SemanticObstacle.class_name` without a shared index table. Fill `Detection2D.header` with the
   image header too. No PDF conflict.
 
-## D-09 /metrics message type  - NEEDS DECISION (minor)
+**Final (accepted 2026-10-03):** as recommended. `class_id` carries the COCO class name;
+`Detection2D.header` copied from the image header.
+
+## D-09 /metrics message type  - ACCEPTED
 
 PDF: "std_msgs/Float32MultiArray or diagnostic_msgs". Must pick one.
 - A. `std_msgs/Float32MultiArray` with a fixed, documented layout
@@ -174,7 +207,10 @@ PDF: "std_msgs/Float32MultiArray or diagnostic_msgs". Must pick one.
 
 **Recommendation:** A (simpler for eval_logger and CSV); layout documented in the message source.
 
-## D-10 Small PDF ambiguities  - NEEDS DECISION (minor)
+**Final (accepted 2026-10-03):** A. `std_msgs/Float32MultiArray`, layout documented in the code
+that publishes it.
+
+## D-10 Small PDF ambiguities  - ACCEPTED
 
 1. **eval_logger language:** PDF says "C++ or Python"; CLAUDE.md says Python only for launch/scripts.
    Recommendation: C++ (`semnav_eval` package), NavigateToPose via rclcpp_action.
@@ -185,7 +221,10 @@ PDF: "std_msgs/Float32MultiArray or diagnostic_msgs". Must pick one.
 4. **Local costmap:** TB3/Nav2 defaults use voxel_layer locally; PDF says "obstacle". Recommendation:
    use ObstacleLayer as the PDF says (2D LiDAR only).
 
-## D-11 Workspace layout vs repo  - NEEDS DECISION
+**Final (accepted 2026-10-03):** (1) eval_logger in C++, package semnav_eval. (2) Push the point
+outward along the ray by the class radius. (3) NavFn first. (4) ObstacleLayer in the local costmap.
+
+## D-11 Workspace layout vs repo  - ACCEPTED
 
 PDF section 5 shows `semnav_ws/` containing CLAUDE.md, docs/, models/, scripts/, src/.
 This repo is `robotics-project-01/` with CLAUDE.md and docs/ at the root.
@@ -193,7 +232,9 @@ This repo is `robotics-project-01/` with CLAUDE.md and docs/ at the root.
 **Recommendation:** treat the repo root as the colcon workspace (`src/<packages>` under it,
 models/, scripts/, third_party/ at root). Build/install/log are already gitignored. No rename.
 
-## D-12 Missing tooling for later phases  - INFO / needs user action later
+**Final (accepted 2026-10-03):** as recommended. Repo root is the colcon workspace.
+
+## D-12 Missing tooling for later phases  - ACCEPTED
 
 - ONNX Runtime C++ not present (expected: fetched into third_party/ by scripts/setup_ort.sh, Phase 3).
   Need to pick a pinned version then (recommend 1.17.x-1.20.x CPU x64 release tarball).
@@ -201,3 +242,19 @@ models/, scripts/, third_party/ at root). Build/install/log are already gitignor
   `export_yolo.py`. Recommend a project `.venv` (already gitignored) with pip; no sudo needed.
   Adds Python tooling deps not named in the PDF beyond "export once" - confirm.
 - Not checked: GPU/CUDA availability (use_cuda is optional).
+
+**Final (accepted 2026-10-03):** as recommended. Project `.venv` (gitignored) with `onnxruntime`
+and `ultralytics`, created when Phase 2 starts. ORT C++ version pinned in Phase 3.
+
+---
+
+## D-13 Safety gate cone direction follows sign of linear.x  - ACCEPTED (deviation from PDF)
+
+**PDF (7.4):** minimum range in a *forward* cone (default +/-30 deg, widened with angular speed).
+
+**Deviation:** the cone is centred forward when `linear.x >= 0` and rearward (scan angle pi)
+when `linear.x < 0`. Width and widening rule unchanged. Reason: with D-02, recovery behaviours
+(backup) are routed through the gate; a forward-only cone would pass reverse motion unchecked.
+
+**Required test:** obstacle at 0.3 m behind + reverse command -> zero linear output; obstacle at
+0.3 m behind + forward command -> passthrough. Implemented in Phase 7.
