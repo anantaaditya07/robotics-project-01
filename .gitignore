@@ -1,0 +1,7 @@
+build/
+install/
+log/
+.venv/
+third_party/onnxruntime/
+*.onnx
+*.pt
