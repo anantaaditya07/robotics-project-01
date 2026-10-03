@@ -622,3 +622,15 @@ same-class merging are the proposed follow-up (needs a decision).
    INSCRIBED 253), ring = round(max_semantic_cost * exp(-k (d - r))) out to class_inflation,
    std::max combine unchanged. LiDAR (obstacle layer) stays the only source of lethal cost, so a
    misplaced semantic track can raise path cost but can never block a route.
+
+## D-27 Static map without the semantic objects  - ACCEPTED (user, 2026-10-03)
+
+**Finding:** maps/semnav_world was built with person, chair and bottle in the world, so the static
+layer + inflation already covered them and masked the SemanticLayer (D-26 A/B: no difference).
+**Change:** the objects stay in the Gazebo world; only the map loses them.
+`scripts/clear_map_objects.py` frees occupied cells within 0.40 m (person), 0.35 m (chair),
+0.15 m (bottle) of each ground-truth footprint centre (world-file pose + collision-mesh offset),
+never touching cells within 0.12 m of a pillar surface (the chair stands 0.15 m from pillar
+(0, -1.1)). Result: 54 cells cleared (person 23, chair 23, bottle 8; 780 -> 726 occupied). The
+original map is kept as maps/semnav_world_with_objects.{pgm,yaml}. Live LiDAR (obstacle layer)
+still marks the objects lethal; the SemanticLayer adds the class rings.
