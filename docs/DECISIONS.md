@@ -1,0 +1,203 @@
+# SemNav decisions log
+
+Each entry: finding (with evidence from this machine), options, recommendation, status.
+Status values: NEEDS DECISION (blocks work), INFO (verified, no conflict), ACCEPTED (user approved).
+Audit date: 2026-10-03. Installed: ROS 2 Humble, nav2 1.1.20, turtlebot3 2.3.6,
+gazebo_ros 3.9.0 / Gazebo 11.10.2, vision_msgs 4.1.1, OpenCV 4.5.4.
+
+---
+
+## D-01 Who publishes /cmd_vel in Nav2 bringup (velocity_smoother)  - NEEDS DECISION
+
+**PDF:** controller output remapped to /cmd_vel_nav; safety_gate_node is the *only* publisher of
+/cmd_vel (sections 4, 6, 8).
+
+**Installed reality** (`/opt/ros/humble/share/nav2_bringup/launch/navigation_launch.py`):
+- `controller_server` remap `cmd_vel -> cmd_vel_nav` (line 122).
+- `velocity_smoother` is launched and lifecycle-managed, remap `cmd_vel -> cmd_vel_nav`,
+  `cmd_vel_smoothed -> cmd_vel` (lines 174-183). **It subscribes /cmd_vel_nav and publishes /cmd_vel.**
+- Both publish `geometry_msgs/msg/Twist` (not TwistStamped) in Humble - matches the PDF.
+
+So with stock bringup, the safety gate and velocity_smoother would both publish /cmd_vel. Conflict.
+
+**Options**
+- A. Own navigation launch in semnav_bringup (copy of nav2_bringup's, adapted): controller ->
+  /cmd_vel_nav, **no velocity_smoother**; gate subscribes /cmd_vel_nav, publishes /cmd_vel.
+  Literal match to the PDF; the gate already has its own accel limiter, so the smoother is redundant.
+- B. Keep velocity_smoother in the chain: controller -> /cmd_vel_nav -> smoother -> /cmd_vel_smoothed
+  -> gate -> /cmd_vel. Adds a topic not in the PDF and changes the gate's input topic.
+- C. Use stock bringup and remap the smoother output elsewhere via launch override (fragile, still
+  needs a custom launch).
+
+**Recommendation:** A. Topics and node list stay exactly as the PDF.
+
+## D-02 behavior_server (spin/backup) bypasses the safety gate  - NEEDS DECISION
+
+**Finding:** in the same launch file `behavior_server` gets only the tf remaps (line 152), and
+`libnav2_spin_behavior.so` publishes on relative `cmd_vel`. So recoveries (spin, backup) publish
+straight to **/cmd_vel**, bypassing the gate. The PDF requires default recoveries (spin, backup, wait)
+*and* a single /cmd_vel publisher. The PDF does not mention this case.
+
+**Options**
+- A. In the semnav navigation launch, remap behavior_server `cmd_vel -> cmd_vel_nav` so recoveries
+  also pass through the gate. (Note: backup moves backwards; gate cone is forward-only, so the gate
+  passes reverse motion through at full scale; acceptable since the watchdog still applies.)
+- B. Leave behaviors on /cmd_vel (two publishers; violates PDF).
+
+**Recommendation:** A (part of the same custom launch as D-01).
+
+## D-03 TurtleBot3 Humble Nav2 params file is stale  - NEEDS DECISION
+
+**PDF:** "Use the TurtleBot3 Nav2 params as the base and change only what you need."
+
+**Finding:** `turtlebot3_navigation2/launch/navigation2.launch.py` loads
+`param/humble/waffle.yaml` on Humble. That file is Galactic-era: it configures `recoveries_server`
+with `nav2_recoveries/*` plugins (line 317+), and has **no** `behavior_server`, `smoother_server`
+or `velocity_smoother` sections, while nav2_bringup 1.1.20 launches `behavior_server`,
+`smoother_server`, `velocity_smoother`. Those nodes would run on built-in defaults; the recovery
+config in the file is ignored. Not yet run, so failure modes are unverified.
+(The non-`humble` `param/waffle.yaml` targets Jazzy: `enable_stamped_cmd_vel`, collision_monitor.)
+
+**Options**
+- A. Base = `nav2_bringup/params/nav2_params.yaml` (matches installed Nav2 1.1.20), overlay TB3
+  waffle values from `param/humble/waffle.yaml` (robot_radius/footprint, velocity limits, AMCL,
+  DWB tuning, scan topic). Frames already agree (`base_link`, `odom`, `map`).
+- B. Base = TB3 `param/humble/waffle.yaml`, add the missing behavior_server section by hand.
+
+**Recommendation:** A. Slight deviation from wording ("TurtleBot3 params as the base"), same intent.
+
+## D-04 Gazebo ground-truth poses  - NEEDS DECISION
+
+**PDF:** ground truth from `/gazebo/model_states` (section 4), used only by eval.
+
+**Finding:** in ROS 2 Gazebo Classic, `/gazebo/model_states` is **not** published by default.
+`gzserver.launch.py` only loads `libgazebo_ros_init.so`, `libgazebo_ros_factory.so`,
+`libgazebo_ros_force_system.so`. It comes from the world plugin `libgazebo_ros_state.so`
+(installed), which publishes `model_states` / `link_states` (gazebo_msgs/ModelStates, LinkStates)
+and serves `get_entity_state` / `set_entity_state`, under the namespace given in `<ros>`
+(see `/opt/ros/humble/share/gazebo_ros/worlds/gazebo_ros_state_demo.world`). None of the installed
+turtlebot3_gazebo worlds include it. `libgazebo_ros_p3d.so` (per-model odometry) is also installed.
+
+**Options**
+- A. Our own world in `semnav_bringup/worlds/` that includes
+  `<plugin name="gazebo_ros_state" filename="libgazebo_ros_state.so"><ros><namespace>/gazebo</namespace></ros><update_rate>N</update_rate></plugin>`
+  -> topic `/gazebo/model_states` exactly as the PDF. eval_logger subscribes to it.
+- B. Poll the `/gazebo/get_entity_state` service from eval_logger (same plugin needed; no topic).
+- C. p3d plugin on each object model (more SDF edits, one topic per model, not in PDF).
+
+**Recommendation:** A. Needs our own world anyway for person/chair/bottle models (section 11).
+Adds dependency `gazebo_msgs` to semnav_eval (implied by the PDF topic; confirm).
+
+## D-05 Camera image frame_id is not an optical frame  - NEEDS DECISION
+
+**PDF:** fusion builds rays `((u-cx)/fx, 0, 1)` in the optical frame and asks TF2 for
+`camera_optical -> base_scan` at the image stamp. TF tree lists `camera_link -> camera_rgb_optical_frame`.
+
+**Finding** (`turtlebot3_gazebo/models/turtlebot3_waffle/model.sdf` lines 370-419): the
+`gazebo_ros_camera` plugin has no `frame_name`, so it defaults to the link name:
+**`header.frame_id = camera_rgb_frame`** (x-forward body frame, not optical).
+The URDF (robot_state_publisher) does provide
+`base_link -> camera_link -> camera_rgb_frame -> camera_rgb_optical_frame` (rpy -1.57 0 -1.57).
+SDF and URDF positions agree (0.069, -0.047, 0.107 from base_link). Using the image header
+frame directly with optical-frame rays would rotate bearings by 90 deg.
+Minor: actual chain has `camera_rgb_frame` between `camera_link` and the optical frame.
+
+**Options**
+- A. fusion parameter `camera_optical_frame` (default `camera_rgb_optical_frame`) used for the TF
+  lookup instead of the image header frame. No SDF change.
+- B. Copy the waffle SDF into semnav_bringup and set `<frame_name>camera_rgb_optical_frame</frame_name>`
+  (combine with D-06), then use header frame_id as-is.
+
+**Recommendation:** B if D-06 copies the SDF anyway (data is then self-describing); otherwise A.
+
+## D-06 Camera resolution and rate  - NEEDS DECISION
+
+**Finding:** waffle camera is **1920x1080 @ 30 Hz**, horizontal_fov 1.02974 rad (~59 deg),
+gaussian noise. The PDF mitigation (section 11) is 640x480 @ 15 Hz. Achieving that requires a
+modified copy of the robot model (SDF) in semnav_bringup, spawned instead of the stock one.
+
+**Options**
+- A. Copy `turtlebot3_waffle` model into `semnav_bringup/models/`, change width/height/update_rate
+  (all as launch-configurable values where possible), spawn that copy.
+- B. Keep 1920x1080 @ 30 Hz; rely on frame dropping. Higher CPU load, more letterbox cost.
+
+**Recommendation:** A (do it in Phase 1/2 so map and tests use the final sensor).
+
+## D-07 TurtleBot3 waffle topic names, frames, sensor limits  - INFO (+ one conflict)
+
+Verified from model.sdf / URDF (no namespace):
+
+| Item | Value |
+|---|---|
+| Image | `/camera/image_raw` (sensor_msgs/Image), frame `camera_rgb_frame` (see D-05) |
+| Camera info | `/camera/camera_info` |
+| Scan | `/scan`, frame `base_scan`, 5 Hz, 360 samples, angle 0 .. 6.28 rad, range 0.12 .. 3.5 m |
+| Odom | `/odom`, odom TF `odom -> base_footprint` from diff-drive plugin |
+| Cmd input | `/cmd_vel` (geometry_msgs/Twist) |
+| Joints | `/joint_states`; IMU `/imu` |
+| TF | `base_footprint -> base_link -> {base_scan, imu_link, camera_link -> camera_rgb_frame -> camera_rgb_optical_frame}` |
+
+Matches PDF names. Notes:
+- **Conflict:** LiDAR max range is **3.5 m**, but the target "median error under 0.3 m in range
+  1-4 m" (section 10) cannot be met beyond 3.5 m. Recommendation: evaluate over 1-3.5 m and state
+  it in the README, or (needs approval) raise the sim LiDAR max range in the copied SDF (D-06).
+- Scan is 5 Hz, so "closest scan" can be up to 100 ms off; consistent with 0.1 s slop.
+- Scan angle 0 = forward and wraps at 2*pi; gate cone and fusion sector must handle wrap-around.
+- PDF QoS for /camera/image_raw: "depth 5" (section 2) vs "depth 1-2" (section 6). Recommend 1-2
+  (sec. 6, more specific), as a parameter.
+
+## D-08 vision_msgs Detection2D field layout  - INFO
+
+Installed vision_msgs **4.1.1** (Humble). Layout:
+```
+Detection2DArray: header, Detection2D[] detections
+Detection2D:      header, ObjectHypothesisWithPose[] results, BoundingBox2D bbox, string id
+ObjectHypothesisWithPose: ObjectHypothesis hypothesis {string class_id, float64 score},
+                          geometry_msgs/PoseWithCovariance pose
+BoundingBox2D:    vision_msgs/Pose2D center {Point2D position {x, y}, float64 theta},
+                  float64 size_x, size_y
+```
+Implications (older tutorials are wrong for this version):
+- Box center is `bbox.center.position.x/y` (not `bbox.center.x`).
+- Class is `results[i].hypothesis.class_id` as a **string**; score is `hypothesis.score`.
+- Recommendation: put the COCO class *name* (e.g. "person") in class_id, so fusion maps directly
+  to `SemanticObstacle.class_name` without a shared index table. Fill `Detection2D.header` with the
+  image header too. No PDF conflict.
+
+## D-09 /metrics message type  - NEEDS DECISION (minor)
+
+PDF: "std_msgs/Float32MultiArray or diagnostic_msgs". Must pick one.
+- A. `std_msgs/Float32MultiArray` with a fixed, documented layout
+  (p50/p95 preprocess, infer, postprocess, total, fps).
+- B. `diagnostic_msgs/DiagnosticArray` with key/value pairs (self-describing, works with
+  rqt_runtime_monitor, but string values).
+
+**Recommendation:** A (simpler for eval_logger and CSV); layout documented in the message source.
+
+## D-10 Small PDF ambiguities  - NEEDS DECISION (minor)
+
+1. **eval_logger language:** PDF says "C++ or Python"; CLAUDE.md says Python only for launch/scripts.
+   Recommendation: C++ (`semnav_eval` package), NavigateToPose via rclcpp_action.
+2. **"pad by class radius"** (fusion step 5): LiDAR hits the near surface, so recommendation is to
+   push the point outward along the ray by the class radius to approximate the object centre.
+3. **Global planner:** SmacPlanner2D or NavFn. TB3 params use NavFn. Recommendation: NavFn first
+   (fewer moving parts), SmacPlanner2D as a one-block change later.
+4. **Local costmap:** TB3/Nav2 defaults use voxel_layer locally; PDF says "obstacle". Recommendation:
+   use ObstacleLayer as the PDF says (2D LiDAR only).
+
+## D-11 Workspace layout vs repo  - NEEDS DECISION
+
+PDF section 5 shows `semnav_ws/` containing CLAUDE.md, docs/, models/, scripts/, src/.
+This repo is `robotics-project-01/` with CLAUDE.md and docs/ at the root.
+
+**Recommendation:** treat the repo root as the colcon workspace (`src/<packages>` under it,
+models/, scripts/, third_party/ at root). Build/install/log are already gitignored. No rename.
+
+## D-12 Missing tooling for later phases  - INFO / needs user action later
+
+- ONNX Runtime C++ not present (expected: fetched into third_party/ by scripts/setup_ort.sh, Phase 3).
+  Need to pick a pinned version then (recommend 1.17.x-1.20.x CPU x64 release tarball).
+- Python `onnxruntime` and `ultralytics` not installed; needed for the Day-2 sanity check and
+  `export_yolo.py`. Recommend a project `.venv` (already gitignored) with pip; no sudo needed.
+  Adds Python tooling deps not named in the PDF beyond "export once" - confirm.
+- Not checked: GPU/CUDA availability (use_cuda is optional).
