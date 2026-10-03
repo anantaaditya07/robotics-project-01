@@ -24,6 +24,8 @@ semantic_fusion_node:
     ttl: 2.0                   # s
     smoothing_alpha: 0.5
     push_out_fraction: 0.5     # D-21: push the LiDAR point out by this fraction of class_radius
+    cluster_gap: 0.3           # m, D-22: split sorted ranges into clusters at gaps > this
+    min_cluster_beams: 2       # D-22: nearest cluster needs at least this many beams
     class_radius:              # m, per class; "default" for any other class (7.2, D-10)
       person: 0.35
       chair: 0.25

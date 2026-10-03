@@ -120,9 +120,9 @@ Open questions blocking a phase are listed in docs/DECISIONS.md (D-xx).
 - [x] Publish /semantic_obstacles (frame map, reliable depth 5) and /semantic_markers
 - [x] Parameters: class_radius map (person 0.35, chair 0.25, default 0.3), min/max_range,
       sector_fraction, assoc_gate, ttl, smoothing_alpha (config/perception_params.yaml)
-- [ ] Live accuracy vs /gazebo/model_states (teleported poses, AMCL re-seeded, 2026-10-03,
-      push_out_fraction 0.5, D-21): person 3.3 m 0.15 m; chair 1.8 m 0.09 m; chair 1.0 m 0.11 m.
-      OPEN: person at 1.4 / 0.8 m off by 1.36 / 1.33 m (legs gap, D-22)
+- [x] Live accuracy vs /gazebo/model_states (teleported poses, AMCL re-seeded, 2026-10-03,
+      push_out_fraction 0.5 (D-21), nearest-cluster range (D-22)): person 3.3 m 0.15 m,
+      1.4 m 0.15 m, 0.8 m 0.25 m; chair 1.8 m 0.09 m, 1.0 m 0.11 m
 - [ ] OPEN D-20: Nav2 controller_server stops taking in /tf when yolo + fusion both run
 - [x] DDS: CycloneDDS for all SemNav processes (D-20), config/cyclonedds.xml; images 15 Hz
 

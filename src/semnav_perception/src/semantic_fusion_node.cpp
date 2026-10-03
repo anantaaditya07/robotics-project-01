@@ -59,6 +59,13 @@ class SemanticFusionNode : public rclcpp::Node {
     fusion_params_.max_range = declare_parameter<double>("max_range", 3.5);  // D-07
     // D-21: fraction of the class radius to push out (1.0 = full radius, D-10 literal).
     fusion_params_.push_out_fraction = declare_parameter<double>("push_out_fraction", 0.5);
+    // D-22: range = median of the nearest cluster of valid ranges (deviation from 7.2 median).
+    fusion_params_.cluster_gap = declare_parameter<double>("cluster_gap", 0.3);
+    const auto min_cluster_beams = declare_parameter<int>("min_cluster_beams", 2);
+    if (min_cluster_beams < 1) {
+      throw std::invalid_argument("min_cluster_beams must be >= 1");
+    }
+    fusion_params_.min_cluster_beams = static_cast<std::size_t>(min_cluster_beams);
     fusion::validate(fusion_params_);
     TrackerParams tp;
     tp.assoc_gate = declare_parameter<double>("assoc_gate", 0.6);
@@ -239,9 +246,9 @@ class SemanticFusionNode : public rclcpp::Node {
       const auto res = fusion::fuse(u_min, u_max, *intrinsics_, tf, geom, scan->ranges,
                                     radius_for(hyp.class_id), fusion_params_);
       if (!res.ok()) {
-        RCLCPP_DEBUG(get_logger(), "%s [%.0f, %.0f] px: %s (%zu beams, %zu valid)",
+        RCLCPP_DEBUG(get_logger(), "%s [%.0f, %.0f] px: %s (%zu beams, %zu valid, %zu in cluster)",
                      hyp.class_id.c_str(), u_min, u_max, fusion::toString(res.status),
-                     res.beams_in_sector, res.valid_beams);
+                     res.beams_in_sector, res.valid_beams, res.cluster_beams);
         continue;
       }
       geometry_msgs::msg::PointStamped in;

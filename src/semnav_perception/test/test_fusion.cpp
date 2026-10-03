@@ -197,15 +197,24 @@ TEST(FusionMedian, ObjectInFrontOfWallAndEdgeLeakage) {
   EXPECT_EQ(r.valid_beams, 13U);
   EXPECT_NEAR(r.range, 1.5, kRangeTol);
 
-  // Without the shrink (fraction 1.0): beams -11..11 = 23: 11 x 1.5 + 12 x 3.0 -> median is the
-  // 12th sorted value = 3.0. Shows why the central-sector shrink matters.
+  EXPECT_EQ(r.cluster_beams, 11U);  // {1.5 x 11}; the 3.0 pair is 1.5 m away (> gap 0.3)
+
+  // Without the shrink (fraction 1.0): beams -11..11 = 23: 11 x 1.5 + 12 x 3.0.
+  // Expectation CHANGED by D-22: the plain median (PDF 7.2 step 4) was the 12th sorted value =
+  // 3.0 (the wall); the nearest-cluster median now ignores the 12 wall beams (gap 1.5 > 0.3)
+  // and gives 1.5 from the 11-beam near cluster. The plain-median value is still checked via
+  // the median() helper so the edge-leakage effect stays documented.
   fu::Params full = defaultParams();
   full.sector_fraction = 1.0;
   const auto r_full =
       fu::fuse(u_min, u_max, simCamera(), forwardCamera(), tb3Scan(), ranges, 0.0, full);
   ASSERT_TRUE(r_full.ok());
   EXPECT_EQ(r_full.beams_in_sector, 23U);
-  EXPECT_NEAR(r_full.range, 3.0, kRangeTol);
+  EXPECT_EQ(r_full.cluster_beams, 11U);
+  EXPECT_NEAR(r_full.range, 1.5, kRangeTol);
+  std::vector<double> plain(11, 1.5);
+  plain.insert(plain.end(), 12, 3.0);
+  EXPECT_DOUBLE_EQ(fu::median(plain), 3.0);
 }
 
 TEST(FusionMedian, OutliersRejectedAndEvenCountAveraged) {
@@ -421,5 +430,152 @@ TEST(FusionFailure, BadParamsThrow) {
   const std::vector<float> ranges(kBeams, kWall);
   EXPECT_THROW(fu::fuse(200, 300, simCamera(), forwardCamera(), tb3Scan(), ranges, 0.0,
                         fu::Params{0.0, 0.0, 10.0}),
+               std::invalid_argument);
+}
+
+// ---------------------------------------------------------------- nearest cluster (D-22)
+
+namespace {
+// Measured case (D-22, person at ~1.43 m): central-sector beams -5..5 deg, in beam order.
+const std::vector<double> kLegsAndWall{2.78, 1.48, 1.45, 1.46, 1.47, 1.48,
+                                       2.68, 2.68, 2.72, 2.75, 2.79};
+}  // namespace
+
+TEST(FusionCluster, LegsAndWallHelper) {
+  // Sorted: 1.45 1.46 1.47 1.48 1.48 | 2.68 2.68 2.72 2.75 2.78 2.79.
+  // Gap 2.68 - 1.48 = 1.20 > 0.3 -> clusters of 5 and 6. Nearest (5 >= 2): median = 3rd = 1.47.
+  // Plain median of 11 values = 6th sorted = 2.68 (the wall).
+  std::size_t n = 99;
+  const auto m = fu::nearestClusterMedian(kLegsAndWall, 0.3, 2, &n);
+  ASSERT_TRUE(m.has_value());
+  EXPECT_NEAR(*m, 1.47, kTol);
+  EXPECT_EQ(n, 5U);
+  std::vector<double> copy = kLegsAndWall;
+  EXPECT_NEAR(fu::median(copy), 2.68, kTol);
+}
+
+TEST(FusionCluster, LegsAndWallThroughFuse) {
+  // Bbox half-width h = 5.5 deg / 0.6 = 9.1667 deg -> shrunk sector +-5.5 deg -> beams -5..5
+  // (11). Values (float) as in the helper test -> range 1.47 (float tolerance), 5-beam cluster.
+  // Position with radius 0.3, push_out_fraction 1.0: (1.47 + 0.3, 0) = (1.77, 0).
+  std::vector<float> ranges(kBeams, kWall);
+  for (int d = -5; d <= 5; ++d) {
+    ranges[beamAt(d)] = static_cast<float>(kLegsAndWall[static_cast<std::size_t>(d + 5)]);
+  }
+  const double h = 5.5 * kDeg / 0.6;
+  const auto r = fu::fuse(uForYaw(h), uForYaw(-h), simCamera(), forwardCamera(), tb3Scan(), ranges,
+                          0.3, defaultParams());
+  ASSERT_TRUE(r.ok()) << fu::toString(r.status);
+  EXPECT_EQ(r.beams_in_sector, 11U);
+  EXPECT_EQ(r.valid_beams, 11U);
+  EXPECT_EQ(r.cluster_beams, 5U);
+  EXPECT_NEAR(r.range, 1.47, kRangeTol);
+  EXPECT_NEAR(r.x, 1.77, kRangeTol);
+  EXPECT_NEAR(r.y, 0.0, kRangeTol);
+}
+
+TEST(FusionCluster, SingleNearOutlierSkipped) {
+  // {0.5, 2.0 x 6}: gap 1.5 > 0.3 -> clusters {0.5} (1 beam < 2, skipped) and {2.0 x 6} -> 2.0.
+  const std::vector<double> v{2.0, 2.0, 0.5, 2.0, 2.0, 2.0, 2.0};
+  std::size_t n = 0;
+  const auto m = fu::nearestClusterMedian(v, 0.3, 2, &n);
+  ASSERT_TRUE(m.has_value());
+  EXPECT_DOUBLE_EQ(*m, 2.0);
+  EXPECT_EQ(n, 6U);
+  // With min_cluster_beams 1 the lone beam IS the nearest cluster -> 0.5.
+  EXPECT_DOUBLE_EQ(*fu::nearestClusterMedian(v, 0.3, 1), 0.5);
+
+  // Through fuse(): sector beams -6..6 (13), beam 0 at 0.5, the other 12 at 2.0 -> 2.0.
+  std::vector<float> ranges(kBeams, kWall);
+  for (int d = -6; d <= 6; ++d) {
+    ranges[beamAt(d)] = 2.0F;
+  }
+  ranges[beamAt(0)] = 0.5F;
+  const auto r = fu::fuse(uForYaw(0.2), uForYaw(-0.2), simCamera(), forwardCamera(), tb3Scan(),
+                          ranges, 0.0, defaultParams());
+  ASSERT_TRUE(r.ok());
+  EXPECT_EQ(r.cluster_beams, 12U);
+  EXPECT_NEAR(r.range, 2.0, kRangeTol);
+}
+
+TEST(FusionCluster, SingleClusterEqualsPlainMedian) {
+  // {1.4, 1.42, 1.5, 1.55, 1.6, 1.7}: max consecutive gap 0.1 <= 0.3 -> one cluster of 6;
+  // median (1.5 + 1.55) / 2 = 1.525, same as median(). Odd case {2.1, 2.0, 2.2} -> 2.1.
+  const std::vector<double> even{1.6, 1.4, 1.7, 1.5, 1.42, 1.55};
+  std::size_t n = 0;
+  EXPECT_NEAR(*fu::nearestClusterMedian(even, 0.3, 2, &n), 1.525, kTol);
+  EXPECT_EQ(n, 6U);
+  std::vector<double> copy = even;
+  EXPECT_NEAR(fu::median(copy), 1.525, kTol);
+  EXPECT_NEAR(*fu::nearestClusterMedian({2.1, 2.0, 2.2}, 0.3, 2), 2.1, kTol);
+}
+
+TEST(FusionCluster, NoQualifyingClusterGivesNoCluster) {
+  // {1.0, 1.5, 2.0, 2.5}: every consecutive gap 0.5 > 0.3 -> four 1-beam clusters; min 3 ->
+  // none qualifies -> nullopt, cluster size 0. Empty input -> nullopt as well.
+  std::size_t n = 99;
+  EXPECT_FALSE(fu::nearestClusterMedian({1.0, 1.5, 2.0, 2.5}, 0.3, 3, &n).has_value());
+  EXPECT_EQ(n, 0U);
+  EXPECT_FALSE(fu::nearestClusterMedian({}, 0.3, 1).has_value());
+
+  // Through fuse(): sector beams -6..6 (13), all inf except 4 beams at 1.0, 1.5, 2.0, 2.5;
+  // min_cluster_beams 3 -> NoCluster, nothing guessed.
+  std::vector<float> ranges(kBeams, kInf);
+  ranges[beamAt(-3)] = 1.0F;
+  ranges[beamAt(-1)] = 1.5F;
+  ranges[beamAt(1)] = 2.0F;
+  ranges[beamAt(3)] = 2.5F;
+  fu::Params p = defaultParams();
+  p.min_cluster_beams = 3;
+  const auto r = fu::fuse(uForYaw(0.2), uForYaw(-0.2), simCamera(), forwardCamera(), tb3Scan(),
+                          ranges, 0.3, p);
+  EXPECT_FALSE(r.ok());
+  EXPECT_EQ(r.status, fu::Status::NoCluster);
+  EXPECT_STREQ(fu::toString(r.status), "NoCluster");
+  EXPECT_EQ(r.beams_in_sector, 13U);
+  EXPECT_EQ(r.valid_beams, 4U);
+  EXPECT_EQ(r.cluster_beams, 0U);
+  EXPECT_EQ(r.range, 0.0);
+  EXPECT_EQ(r.x, 0.0);
+  EXPECT_EQ(r.y, 0.0);
+}
+
+TEST(FusionCluster, GapBoundaryIsInclusive) {
+  // Split rule: new cluster only if difference > gap; difference == gap stays together.
+  // Values are exact binary fractions so the difference is exactly the gap.
+  // {1.0, 1.5}, gap 0.5: 1.5 - 1.0 = 0.5, not > 0.5 -> one cluster of 2 -> median 1.25.
+  std::size_t n = 0;
+  EXPECT_DOUBLE_EQ(*fu::nearestClusterMedian({1.5, 1.0}, 0.5, 2, &n), 1.25);
+  EXPECT_EQ(n, 2U);
+  // Gap 0.25 < 0.5 -> split into {1.0}, {1.5}; min 2 -> none qualifies.
+  EXPECT_FALSE(fu::nearestClusterMedian({1.5, 1.0}, 0.25, 2).has_value());
+  // Chained: {1.0, 1.25, 1.5, 2.0}, gap 0.25: 0.25, 0.25 stay, 0.5 splits -> {1.0, 1.25, 1.5}
+  // -> median 1.25, size 3.
+  EXPECT_DOUBLE_EQ(*fu::nearestClusterMedian({2.0, 1.5, 1.25, 1.0}, 0.25, 2, &n), 1.25);
+  EXPECT_EQ(n, 3U);
+}
+
+TEST(FusionCluster, BadClusterParamsThrow) {
+  fu::Params p = defaultParams();
+  EXPECT_DOUBLE_EQ(p.cluster_gap, 0.3);  // documented defaults
+  EXPECT_EQ(p.min_cluster_beams, 2U);
+  EXPECT_NO_THROW(fu::validate(p));
+  p.cluster_gap = 0.0;
+  EXPECT_THROW(fu::validate(p), std::invalid_argument);
+  p.cluster_gap = -0.1;
+  EXPECT_THROW(fu::validate(p), std::invalid_argument);
+  p.cluster_gap = std::nan("");
+  EXPECT_THROW(fu::validate(p), std::invalid_argument);
+  p.cluster_gap = std::numeric_limits<double>::infinity();
+  EXPECT_THROW(fu::validate(p), std::invalid_argument);
+  p.cluster_gap = 0.3;
+  p.min_cluster_beams = 0;
+  EXPECT_THROW(fu::validate(p), std::invalid_argument);
+  p.min_cluster_beams = 1;
+  EXPECT_NO_THROW(fu::validate(p));
+  // fuse() validates too.
+  p.min_cluster_beams = 0;
+  const std::vector<float> ranges(kBeams, kWall);
+  EXPECT_THROW(fu::fuse(200, 300, simCamera(), forwardCamera(), tb3Scan(), ranges, 0.0, p),
                std::invalid_argument);
 }

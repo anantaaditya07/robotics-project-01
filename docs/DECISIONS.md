@@ -494,7 +494,7 @@ person's centre. Chair: 0.05 m at 1.8 m, 0.15 m at 1.0 m.
 in fusion::Params and semantic_fusion_node; 1.0 reproduces D-10 literally. Re-check with 0.5:
 person 3.3 m 0.15 m (+0.13 radial); chair 1.8 m 0.09 m (-0.08 radial); chair 1.0 m 0.11 m.
 
-## D-22 Close-range person: central-sector median ranges the wall between the legs  - OPEN
+## D-22 Close-range person: central-sector median ranges the wall between the legs  - ACCEPTED (deviation from PDF 7.2 step 4)
 
 **Measurement (2026-10-03):** person at 1.43 m -> fused 1.36 m too far (LiDAR median 2.68 m); at
 0.83 m -> 1.33 m too far (median 2.04 m). Beam dump at 1.43 m, central 60 % of the bbox sector
@@ -507,3 +507,13 @@ and the median is correct.
   threshold param, min beams param). Robust to background between/behind thin parts.
 - B. Lower percentile instead of median (param, e.g. 25th): simple; less robust to a near outlier.
 - C. Keep the median (PDF literal); state the limit in the README.
+
+**Final (accepted by user 2026-10-03):** A, an accepted deviation from PDF 7.2 step 4 ("take the
+median"): the range is the median of the NEAREST cluster of valid ranges in the central sector
+(clusters split where consecutive sorted ranges differ by more than a gap threshold; a cluster
+needs a minimum number of beams, otherwise the next cluster is used). Both are parameters.
+Implemented 2026-10-03: `cluster_gap` 0.3 m, `min_cluster_beams` 2 (fusion::Params and node
+params); a gap exactly equal to cluster_gap stays in one cluster; no qualifying cluster ->
+Status::NoCluster (detection dropped). Re-measure (teleported poses, AMCL re-seeded): person
+1.4 m 1.36 -> 0.15 m, person 0.8 m 1.33 -> 0.25 m (YOLO detects it in 30/90 frames at that
+range); person 3.3 m 0.15 m, chair 1.8 m 0.09 m, chair 1.0 m 0.11 m unchanged.
