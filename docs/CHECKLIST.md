@@ -36,9 +36,18 @@ Open questions blocking a phase are listed in docs/DECISIONS.md (D-xx).
 **Done when:** Teleop works; camera and scan visible in RViz.
 
 ## Phase 2 (Day 2) - Map, Nav2, YOLO sanity check
-- [ ] Build map with slam_toolbox online_async (Mode B); save with map_saver into semnav_bringup/maps
+- [ ] USER: build map with slam_toolbox online_async (Mode B) by teleop; save with scripts/save_map.sh
 - [ ] Bring up Nav2 + AMCL + map_server on saved map (Mode A); send 2D Goal Pose from RViz
-- [ ] Nav2 params based on nav2_bringup nav2_params.yaml + TB3 waffle overlay (D-03), load without errors
+- [x] Nav2 params based on nav2_bringup nav2_params.yaml + TB3 waffle overlay (D-03), load without errors
+      (config/nav2_params.yaml: NavFn, DWB, local obstacle+inflation, global static+obstacle+inflation,
+      no velocity_smoother; TB3 humble waffle max_vel_x 0.22) - verified 2026-10-03
+- [x] launch/navigation.launch.py (D-01, D-02, D-16): controller/planner/smoother/behavior/bt_navigator/
+      waypoint_follower, no velocity_smoother; controller + behavior_server cmd_vel -> /cmd_vel_nav;
+      arg cmd_vel_relay (default true) runs topic_tools relay /cmd_vel_nav -> /cmd_vel.
+      Verified headless with mapping.launch.py: all 6 nodes active, 0 ERROR lines, /cmd_vel has exactly
+      one publisher (cmd_vel_relay), short NavigateToPose goal SUCCEEDED
+- [x] launch/mapping.launch.py (sim + slam_toolbox online_async, config/slam_toolbox_online_async.yaml,
+      max_laser_range 3.5) + scripts/save_map.sh -> semnav_bringup/maps/; /map published headless
 - [x] Copy waffle model into semnav_bringup (models/semnav_waffle): camera 640x480 @ 15 Hz,
       frame_name camera_rgb_optical_frame (D-05, D-06); spawned by sim.launch.py
 - [x] Own world worlds/semnav_world.world: TB3 world + libgazebo_ros_state.so (ns /gazebo, 10 Hz)

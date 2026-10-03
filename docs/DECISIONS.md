@@ -302,3 +302,26 @@ not detected even at conf 0.05.
 `class_filter` default = `[person, chair]`. bottle_1 stays in the world as an obstacle that
 perception misses, demonstrating that LiDAR (obstacle layer, safety gate) still handles the
 geometry when perception fails.
+
+## D-16 Interim /cmd_vel_nav -> /cmd_vel relay until safety_gate_node exists  - ACCEPTED
+
+**Task (Phase 2c-1):** navigation.launch.py gets a launch arg (default on) relaying /cmd_vel_nav
+to /cmd_vel via topic_tools relay or equivalent, until the gate exists (Phase 7).
+
+**Finding (2026-10-03):** `topic_tools` is not installed (`/opt/ros/humble/share/topic_tools`
+missing; apt candidate `ros-humble-topic-tools` 1.1.2 available). No other relay executable in
+/opt/ros/humble. CLAUDE.md forbids Python nodes and new dependencies without approval.
+
+**Options**
+- A. Install topic_tools (user runs `sudo apt install ros-humble-topic-tools`), add
+  `<exec_depend>topic_tools</exec_depend>`; launch arg starts `topic_tools relay`.
+  Matches the task literally; /cmd_vel_nav exists in both modes; adds one dependency.
+- B. No relay: the launch arg switches the controller/behavior_server remap target between
+  /cmd_vel (arg on, interim) and /cmd_vel_nav (arg off, gate). Zero dependencies, zero hops;
+  but /cmd_vel_nav does not exist while the arg is on.
+- C. Small C++ relay node in semnav_bringup (Twist in -> Twist out). No external dep, but a
+  node not in the PDF and throwaway code.
+
+**Final (accepted 2026-10-03):** A. User installs `ros-humble-topic-tools`; semnav_bringup adds
+`<exec_depend>topic_tools</exec_depend>`; navigation.launch.py arg `cmd_vel_relay` (default true)
+runs `topic_tools relay /cmd_vel_nav /cmd_vel`. Set it false once safety_gate_node exists.

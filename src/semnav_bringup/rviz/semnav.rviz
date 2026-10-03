@@ -13,6 +13,19 @@ Visualization Manager:
       Cell Size: 1
       Plane Cell Count: 10
       Value: true
+    - Class: rviz_default_plugins/Map
+      Name: Map
+      Enabled: true
+      Topic:
+        Value: /map
+        Reliability Policy: Reliable
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Depth: 1
+      Color Scheme: map
+      Alpha: 0.7
+      Draw Behind: true
+      Value: true
     - Class: rviz_default_plugins/RobotModel
       Name: RobotModel
       Enabled: true
