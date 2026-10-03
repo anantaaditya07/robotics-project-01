@@ -49,7 +49,11 @@ Open questions blocking a phase are listed in docs/DECISIONS.md (D-xx).
       640x480 fx 565.6 cx 320.5; /scan 4.8 Hz frame base_scan; /gazebo/model_states lists
       ground_plane, turtlebot3_world, person_1, chair_1, bottle_1, waffle;
       TF camera_rgb_optical_frame -> base_scan resolves
-- [ ] Python ONNX sanity check on sim camera frames (scripts/; needs onnxruntime/ultralytics, D-12)
+- [x] Python ONNX sanity check on sim camera frames (2026-10-03): `scripts/grab_sim_frames.py`
+      (system python + ROS, 20 PNGs -> data/sim_frames/) and `scripts/check_yolo_on_frames.py`
+      (.venv, onnxruntime + opencv; letterbox 114, decode, per-class NMS, conf 0.35 / IoU 0.45).
+      Result on 20 frames from spawn: chair max 0.917 (20/20), person max 0.842 (20/20);
+      bottle_1 (textured beer can) NOT detected even at conf 0.05; mean inference 37.6 ms (CPU, 4 threads)
 - [x] YOLO export script `scripts/export_yolo.py` (YOLOv8n, 640, opset 12, simplify; defaults match
       existing models/yolov8n.onnx metadata; refuses overwrite without --force; real export not re-run)
 
@@ -69,7 +73,7 @@ Open questions blocking a phase are listed in docs/DECISIONS.md (D-xx).
 ## Phase 4 (Day 4) - YOLO node hardening + tests
 - [ ] Worker thread; callback stores newest frame under mutex + condition variable; drops old frames
 - [ ] ORT options: intra_op_num_threads (default 4), ORT_ENABLE_ALL, reused input buffer, use_cuda param
-- [ ] Parameters: model_path, conf_threshold (0.35), iou_threshold (0.45), input_size, class_filter,
+- [ ] Parameters: model_path, conf_threshold (0.35), iou_threshold (0.45), input_size, class_filter (default [person, chair], D-15),
       use_cuda, publish_annotated
 - [ ] Stage timing (preprocess/infer/postprocess), rolling p50/p95 logged every 5 s, published on /metrics (D-09)
 - [ ] GoogleTest: letterbox round-trip within 1 px; decode on synthetic [1,84,8400] tensor; NMS removes duplicate

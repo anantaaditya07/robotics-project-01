@@ -288,3 +288,17 @@ added to GAZEBO_MODEL_PATH by sim.launch.py). Approved sources:
 - `WoodenChair`: fuel.gazebosim.org OpenRobotics/WoodenChair, CC0
 Rejected: Fuel "Water Bottle" (.glb mesh, not loadable by Gazebo Classic 11).
 Consequence: a fresh clone needs network once (fetch script) before the world shows objects.
+
+## D-15 Demo classes are person and chair; bottle stays as an undetected obstacle  - ACCEPTED
+
+**PDF (7.1, 11):** class_filter example "person, chair, bottle"; sim objects should be detectable
+by COCO YOLO.
+
+**Finding (2026-10-03, Phase 2b sanity check, 20 frames from spawn, conf 0.35 / IoU 0.45):**
+chair max 0.917 (20/20 frames), person max 0.842 (20/20); bottle_1 (osrf `beer`, textured can)
+not detected even at conf 0.05.
+
+**Final (accepted 2026-10-03):** demo classes are person and chair; yolo_onnx_node
+`class_filter` default = `[person, chair]`. bottle_1 stays in the world as an obstacle that
+perception misses, demonstrating that LiDAR (obstacle layer, safety gate) still handles the
+geometry when perception fails.

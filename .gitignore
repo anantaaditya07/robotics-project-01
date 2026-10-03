@@ -8,3 +8,6 @@ third_party/onnxruntime/
 
 # Gazebo object models fetched by scripts/fetch_models.sh (D-14)
 src/semnav_bringup/models_external/
+
+# Local script outputs (sim frames, YOLO check images)
+data/
