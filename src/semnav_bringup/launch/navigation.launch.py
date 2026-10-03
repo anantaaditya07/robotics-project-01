@@ -95,6 +95,11 @@ def generate_launch_description():
                         '(D-16); set false when the gate runs'),
     ]
 
+    # D-19: Fast DDS profile with a large shared-memory segment so camera images are not lost.
+    fastdds_profile = SetEnvironmentVariable(
+        'FASTRTPS_DEFAULT_PROFILES_FILE',
+        os.path.join(bringup_dir, 'config', 'fastdds_profile.xml'))
+
     stdout_linebuf_envvar = SetEnvironmentVariable('RCUTILS_LOGGING_BUFFERED_STREAM', '1')
 
     def nav2_node(package, executable, extra_remappings=None):
@@ -138,7 +143,8 @@ def generate_launch_description():
         parameters=[{'use_sim_time': use_sim_time}],
         condition=IfCondition(cmd_vel_relay))
 
-    return LaunchDescription(declare_args + [stdout_linebuf_envvar] + nav2_nodes + [
+    env = [stdout_linebuf_envvar, fastdds_profile]
+    return LaunchDescription(declare_args + env + nav2_nodes + [
         lifecycle_manager,
         relay,
     ])

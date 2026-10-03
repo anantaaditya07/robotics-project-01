@@ -400,3 +400,34 @@ the yolo node (/detections, vision_msgs/Detection2DArray) to verify.
 yolo_onnx_node with newest-frame buffer + worker thread, /detections, /detections/image,
 /metrics p50/p95 (D-09), class_filter default [person, chair] (D-15)), one commit per green
 slice; then Phase 5 as specified, verified with the real YOLO node.
+
+## D-19 Camera images lost in DDS transport (UDP receive buffer overflow)  - ACCEPTED
+
+**Symptom (2026-10-03, Phase 3 live check):** yolo_onnx_node processes 0.2-6 fps although
+inference takes ~40 ms (p50) and the camera runs at 15 Hz; 0 frames dropped by the node itself.
+
+**Evidence:**
+- Direct rclpy subscriber (SensorData QoS), 6 s windows: /camera/camera_info 15.0 Hz, /scan 5.0 Hz,
+  but /camera/image_raw 0.2-3.4 Hz (worse with two image subscribers). Same Gazebo sensor, so the
+  camera publishes at 15 Hz; the 921,600-byte images are lost in transport.
+- /proc/net/snmp Udp: InErrors 392797 == RcvbufErrors 392797 (kernel dropped datagrams because
+  socket receive buffers were full).
+- net.core.rmem_max = rmem_default = 212992 bytes. RMW is rmw_fastrtps_cpp (Fast DDS 2.6.12). Its
+  default shared-memory segment (512 KB) is smaller than one image, so images go over UDP as
+  ~15 fragments each and overflow the 208 KB receive buffer.
+- Sim is healthy (RTF 0.99-1.00).
+
+**Options**
+- A. Repo Fast DDS XML profile (`semnav_bringup/config/fastdds_profile.xml`) with a larger SHM
+  segment (e.g. 10 MB) so same-host images use shared memory; launch files set
+  FASTRTPS_DEFAULT_PROFILES_FILE for every process they start. No sudo. Shells running
+  `ros2 run`/CLI tools must export it too (document in README).
+- B. System UDP buffers (user runs sudo): `sysctl -w net.core.rmem_max=2147483647
+  net.core.rmem_default=8388608` (+ /etc/sysctl.d file to persist). Standard ROS 2 advice for
+  large messages; machine-level, nothing in the repo.
+- C. A + B.
+- D. Switch RMW to CycloneDDS (new dependency, not installed).
+
+**Final (accepted 2026-10-03):** C (A + B). Repo profile `semnav_bringup/config/fastdds_profile.xml`
+(SHM segment 10 MB + UDPv4, 8 MB socket buffers) exported as FASTRTPS_DEFAULT_PROFILES_FILE by the
+SemNav launch files; user raises UDP buffers via /etc/sysctl.d (sudo).

@@ -14,7 +14,7 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetEnvironmentVariable
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -44,6 +44,11 @@ def generate_launch_description():
             description='slam_toolbox parameter file'),
     ]
 
+    # D-19: Fast DDS profile with a large shared-memory segment so camera images are not lost.
+    fastdds_profile = SetEnvironmentVariable(
+        'FASTRTPS_DEFAULT_PROFILES_FILE',
+        os.path.join(bringup_dir, 'config', 'fastdds_profile.xml'))
+
     sim = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(bringup_dir, 'launch', 'sim.launch.py')),
         launch_arguments={
@@ -62,6 +67,7 @@ def generate_launch_description():
         output='screen')
 
     return LaunchDescription(declare_args + [
+        fastdds_profile,
         sim,
         slam_toolbox,
     ])

@@ -67,6 +67,11 @@ def generate_launch_description():
         DeclareLaunchArgument('log_level', default_value='info', description='Log level'),
     ]
 
+    # D-19: Fast DDS profile with a large shared-memory segment so camera images are not lost.
+    fastdds_profile = SetEnvironmentVariable(
+        'FASTRTPS_DEFAULT_PROFILES_FILE',
+        os.path.join(bringup_dir, 'config', 'fastdds_profile.xml'))
+
     stdout_linebuf_envvar = SetEnvironmentVariable('RCUTILS_LOGGING_BUFFERED_STREAM', '1')
 
     nodes = [
@@ -101,4 +106,4 @@ def generate_launch_description():
                         {'node_names': lifecycle_nodes}]),
     ]
 
-    return LaunchDescription(declare_args + [stdout_linebuf_envvar] + nodes)
+    return LaunchDescription(declare_args + [stdout_linebuf_envvar, fastdds_profile] + nodes)
