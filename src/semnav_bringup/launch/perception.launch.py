@@ -1,7 +1,9 @@
-"""Perception bringup: yolo_onnx_node (architecture 7.1).
+"""Perception bringup: yolo_onnx_node (7.1) and semantic_fusion_node (7.2).
 
 Parameters come from config/perception_params.yaml. The Fast DDS profile (D-19) is exported so
 camera images arrive over shared memory.
+
+semantic_fusion_node needs the map frame: run localization.launch.py (or mapping.launch.py).
 
 Usage (with sim.launch.py running):
     ros2 launch semnav_bringup perception.launch.py
@@ -43,4 +45,11 @@ def generate_launch_description():
         parameters=[params_file, {'use_sim_time': use_sim_time}],
         output='screen')
 
-    return LaunchDescription(declare_args + [fastdds_profile, yolo])
+    fusion = Node(
+        package='semnav_perception',
+        executable='semantic_fusion_node',
+        name='semantic_fusion_node',
+        parameters=[params_file, {'use_sim_time': use_sim_time}],
+        output='screen')
+
+    return LaunchDescription(declare_args + [fastdds_profile, yolo, fusion])

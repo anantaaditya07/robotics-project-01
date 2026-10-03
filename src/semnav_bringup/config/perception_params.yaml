@@ -13,3 +13,24 @@ yolo_onnx_node:
     detections_qos_depth: 5
     metrics_period: 5.0        # s, log + /metrics
     metrics_window: 200        # samples in the rolling p50/p95 window
+
+semantic_fusion_node:
+  ros__parameters:
+    target_frame: map          # SemanticObstacle frame (architecture section 6)
+    sector_fraction: 0.6       # central fraction of the bbox bearing sector
+    min_range: 0.12            # m, TB3 LiDAR minimum
+    max_range: 3.5             # m, TB3 LiDAR maximum (D-07)
+    assoc_gate: 0.6            # m
+    ttl: 2.0                   # s
+    smoothing_alpha: 0.5
+    class_radius:              # m, per class; "default" for any other class (7.2, D-10)
+      person: 0.35
+      chair: 0.25
+      default: 0.3
+    scan_buffer_size: 10       # scans kept for closest-stamp lookup
+    max_scan_dt: 0.1           # s, max |scan stamp - image stamp| (7.2 slop)
+    tf_timeout: 0.1            # s
+    scan_qos_depth: 5
+    qos_depth: 5
+    marker_height: 1.0         # m
+    expiry_check_period: 0.5   # s

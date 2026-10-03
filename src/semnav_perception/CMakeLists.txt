@@ -11,11 +11,17 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(cv_bridge REQUIRED)
+find_package(geometry_msgs REQUIRED)
 find_package(OpenCV REQUIRED COMPONENTS core imgproc dnn)
 find_package(rclcpp REQUIRED)
+find_package(semnav_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
+find_package(tf2_ros REQUIRED)
 find_package(vision_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
 
 # --- ONNX Runtime (pinned, fetched by scripts/setup_ort.sh, D-12) ---
 set(SEMNAV_ORT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/onnxruntime"
@@ -52,6 +58,12 @@ target_compile_definitions(yolo_onnx_node PRIVATE
   SEMNAV_DEFAULT_MODEL_PATH="${SEMNAV_MODEL_PATH}")
 set_target_properties(yolo_onnx_node PROPERTIES INSTALL_RPATH "$ORIGIN/..")
 install(TARGETS yolo_onnx_node DESTINATION lib/${PROJECT_NAME})
+
+add_executable(semantic_fusion_node src/semantic_fusion_node.cpp)
+target_include_directories(semantic_fusion_node PRIVATE include)
+ament_target_dependencies(semantic_fusion_node geometry_msgs rclcpp semnav_msgs sensor_msgs tf2
+  tf2_geometry_msgs tf2_ros vision_msgs visualization_msgs)
+install(TARGETS semantic_fusion_node DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)

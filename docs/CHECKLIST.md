@@ -109,17 +109,20 @@ Open questions blocking a phase are listed in docs/DECISIONS.md (D-xx).
 **Done when:** p50/p95 reported; unit tests green. - DONE 2026-10-03 (49 tests green)
 
 ## Phase 5 (Day 5) - semantic_fusion_node
-- [ ] Cache intrinsics (fx, cx) from /camera/camera_info
+- [x] Cache intrinsics (fx, cx) from /camera/camera_info
 - [x] Header-only fusion.hpp: bbox u-span -> optical rays -> laser-frame yaw sector; central
       sector_fraction (60%); reject invalid ranges; median; position; class-radius padding (D-10)
-- [ ] TF lookup image-header frame -> laser frame at image stamp; no hard-coded frame names;
+- [x] TF lookup image-header frame -> laser frame at image stamp; no hard-coded frame names;
       unresolved TF fails loudly and drops the detection (D-05)
-- [ ] Scan ring buffer, pick closest stamp (or ApproximateTime, slop 0.1 s)
+- [x] Scan ring buffer, pick closest stamp (or ApproximateTime, slop 0.1 s)
 - [x] Header-only tracker.hpp: NN association per class with gate 0.6 m, smoothing_alpha, ids,
       miss counter, ttl 2 s
-- [ ] Publish /semantic_obstacles (frame map, reliable depth 5) and /semantic_markers
-- [ ] Parameters: class_radius map (person 0.35, chair 0.25, default 0.3), min/max_range,
-      sector_fraction, assoc_gate, ttl, smoothing_alpha
+- [x] Publish /semantic_obstacles (frame map, reliable depth 5) and /semantic_markers
+- [x] Parameters: class_radius map (person 0.35, chair 0.25, default 0.3), min/max_range,
+      sector_fraction, assoc_gate, ttl, smoothing_alpha (config/perception_params.yaml)
+- [ ] Live accuracy vs /gazebo/model_states - partial (2026-10-03): spawn pose chair 0.09 m,
+      person 0.35 m (3.3 m away, over-push); 1.07 m from chair 0.23 m; near-person pose blocked by
+      D-20 (Nav2 lost map->odom). See report.
 - [x] GoogleTest for projection / sector / median / tracker (test_fusion 17, test_tracker 16)
 
 **Done when:** Markers sit on the right objects in RViz.

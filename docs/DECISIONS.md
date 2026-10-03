@@ -431,3 +431,32 @@ inference takes ~40 ms (p50) and the camera runs at 15 Hz; 0 frames dropped by t
 **Final (accepted 2026-10-03):** C (A + B). Repo profile `semnav_bringup/config/fastdds_profile.xml`
 (SHM segment 10 MB + UDPv4, 8 MB socket buffers) exported as FASTRTPS_DEFAULT_PROFILES_FILE by the
 SemNav launch files; user raises UDP buffers via /etc/sysctl.d (sudo).
+
+## D-20 Nav2 server stops receiving map->odom from one TF publisher (DDS reader stall)  - OPEN
+
+**Symptom (2026-10-03, Phase 5 verification):** with sim + AMCL + Nav2 + perception running,
+controller_server logged "Transform data too old when converting from map to odom" continuously
+from sim time 183.7 s to 552 s (2,447 errors); its map->odom stayed at 165.998 s. Goals aborted
+("Failed to make progress"). Same pattern as the user's Phase 2c mapping run (planner/behavior
+servers: map->odom from slam_toolbox frozen at 120.8 s while the clock reached 399 s; D-17 era,
+before the D-19 profile).
+
+**Evidence:**
+- AMCL kept publishing: a fresh /tf subscriber at clock 417.8 saw map->odom stamped 418.8
+  (= clock + transform_tolerance 1.0). AMCL log has no errors.
+- Only controller_server was affected (planner_server 2 transient errors at startup,
+  bt_navigator 0). So one writer->reader pair (AMCL -> controller_server /tf) stalled while the
+  same writer kept delivering to other readers.
+- Not CPU starvation: RTF 0.99-1.00 throughout; 20 cores.
+- Fast DDS 2.6.12 uses shared memory for same-host traffic by default (also before D-19).
+- Not yet isolated: whether the stall depends on SHM, on the D-19 profile, or on load from the
+  perception nodes. Not reproduced in the 10-goal auto_map run (no perception running).
+
+**Options**
+- A. UDP-only Fast DDS profile (no SHM) + the D-19 sysctl buffers (needs the user's sudo step,
+  not applied yet: rmem_max still 212992). Then soak-test (Nav2 goal loop + perception, 15 min)
+  and watch every Nav2 server for stale map->odom.
+- B. Switch RMW to CycloneDDS (`sudo apt install ros-humble-rmw-cyclonedds-cpp`,
+  RMW_IMPLEMENTATION=rmw_cyclonedds_cpp in launch files): new dependency, commonly used with Nav2
+  on Humble; same soak test.
+- C. Investigate further first (soak with/without SHM, with/without perception) before choosing.

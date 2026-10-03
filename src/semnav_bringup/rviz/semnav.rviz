@@ -70,6 +70,18 @@ Visualization Manager:
         Depth: 2
       Normalize Range: true
       Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Name: SemanticMarkers
+      Enabled: true
+      Namespaces:
+        {}
+      Topic:
+        Value: /semantic_markers
+        Reliability Policy: Reliable
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Depth: 5
+      Value: true
     - Class: rviz_default_plugins/Image
       Name: Detections
       Enabled: true
