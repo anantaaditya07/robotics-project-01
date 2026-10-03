@@ -123,7 +123,7 @@ Open questions blocking a phase are listed in docs/DECISIONS.md (D-xx).
 - [x] Live accuracy vs /gazebo/model_states (teleported poses, AMCL re-seeded, 2026-10-03,
       push_out_fraction 0.5 (D-21), nearest-cluster range (D-22)): person 3.3 m 0.15 m,
       1.4 m 0.15 m, 0.8 m 0.25 m; chair 1.8 m 0.09 m, 1.0 m 0.11 m
-- [ ] OPEN D-20: Nav2 controller_server stops taking in /tf when yolo + fusion both run
+- [x] D-20 FIXED: tf2 0.25.24 underlay (scripts/setup_underlay.sh); 10-min soak 36/36 goals
       ROOT CAUSE 2026-10-03 (gdb): ABBA deadlock in tf2_ros::Buffer (listener testTransformableRequests
       vs obstacle-layer MessageFilter waitForTransform); fix option pending decision
       (time-boxed 2026-10-03: not sim time, not CPU, not annotated images, not blocking lookups;
@@ -141,7 +141,10 @@ Open questions blocking a phase are listed in docs/DECISIONS.md (D-xx).
 - [x] tf_ conversion map -> costmap global frame for rolling local costmap
 - [x] Added to global (static, obstacle, semantic, inflation) and local (obstacle, semantic, inflation) costmaps
       (enabled: False until D-20 is fixed; verified 2026-10-03: loads in both costmaps, goal SUCCEEDED)
-- [ ] Prototype / live check with the layer enabled (paint around a person) - after D-20
+- [x] Live check with the layer enabled (2026-10-03, semnav.launch.py at spawn, global costmap
+      on vs off, cell diff; noise: 1.9 % of far cells change, mean |diff| 0.21): of the cells within
+      1.4 m that were < 50 without the layer, person 51/77 raised (mean 21.8, max 110), chair 9/142
+      (mean 4.5) - the chair ring (0.25 + 0.3 m) mostly lies inside existing map+inflation cost
 - [x] GoogleTest for header-only cost math (test_cost_model 16)
 
 **Done when:** Costmap visibly changes around a person.
@@ -153,8 +156,9 @@ Open questions blocking a phase are listed in docs/DECISIONS.md (D-xx).
 - [x] Cone direction follows sign of linear.x: forward cone forward, rear cone reversing (D-13, deviation)
 - [x] GoogleTest: wall at 0.3 m -> zero; far scan -> passthrough; obstacle behind + reverse -> zero,
       obstacle behind + forward -> passthrough (D-13)
-- [ ] Own navigation launch without velocity_smoother; controller and behavior_server remapped to
-      /cmd_vel_nav; gate is the only /cmd_vel publisher (D-01, D-02)
+- [x] Own navigation launch without velocity_smoother; controller and behavior_server remapped to
+      /cmd_vel_nav; gate is the only /cmd_vel publisher (D-01, D-02) - verified 2026-10-03:
+      /cmd_vel publishers = safety_gate_node only; relay off by default (debug arg)
 - [ ] semnav_bringup: one launch file starts Gazebo, Nav2, perception, fusion, gate, RViz
 
 **Done when:** One command starts the full system.

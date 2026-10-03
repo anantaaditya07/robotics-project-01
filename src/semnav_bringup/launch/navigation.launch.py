@@ -10,8 +10,10 @@ Command velocity routing:
   only publisher of /cmd_vel.
 - D-02: behavior_server (spin, backup, wait) is also remapped cmd_vel -> cmd_vel_nav so recoveries
   pass through the safety gate too.
-- D-16: until safety_gate_node exists, the cmd_vel_relay arg (default true) runs
-  `topic_tools relay /cmd_vel_nav /cmd_vel`. Set it false once the gate runs, otherwise /cmd_vel
+- Phase 7: the safety_gate arg (default true) starts semnav_control safety_gate_node
+  (/cmd_vel_nav + /scan -> /cmd_vel, config/safety_gate_params.yaml), the only /cmd_vel publisher.
+- D-16 (debug only now): cmd_vel_relay (default false) runs `topic_tools relay /cmd_vel_nav
+  /cmd_vel` instead of the gate; it is ignored while safety_gate is true, otherwise /cmd_vel
   has two publishers.
 
 Localization (map_server/AMCL or the map->odom transform) is NOT started here. It comes either
@@ -19,8 +21,8 @@ from slam_toolbox (mapping.launch.py) or from a separate localization launch.
 
 Usage (with sim.launch.py and mapping.launch.py already running):
     ros2 launch semnav_bringup navigation.launch.py
-Once safety_gate_node runs:
-    ros2 launch semnav_bringup navigation.launch.py cmd_vel_relay:=false
+Without the safety gate (debug only, relay instead):
+    ros2 launch semnav_bringup navigation.launch.py safety_gate:=false cmd_vel_relay:=true
 """
 
 import os
@@ -29,6 +31,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
 from launch.conditions import IfCondition
+from launch.substitutions import PythonExpression
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.descriptions import ParameterFile
@@ -45,6 +48,8 @@ def generate_launch_description():
     use_respawn = LaunchConfiguration('use_respawn')
     log_level = LaunchConfiguration('log_level')
     cmd_vel_relay = LaunchConfiguration('cmd_vel_relay')
+    safety_gate = LaunchConfiguration('safety_gate')
+    safety_gate_params = LaunchConfiguration('safety_gate_params')
 
     # No velocity_smoother (D-01).
     lifecycle_nodes = ['controller_server',
@@ -90,9 +95,16 @@ def generate_launch_description():
             description='Respawn a Nav2 node if it crashes'),
         DeclareLaunchArgument('log_level', default_value='info', description='Log level'),
         DeclareLaunchArgument(
-            'cmd_vel_relay', default_value='true',
-            description='Interim relay /cmd_vel_nav -> /cmd_vel until safety_gate_node exists '
-                        '(D-16); set false when the gate runs'),
+            'safety_gate', default_value='true',
+            description='Start safety_gate_node, the only /cmd_vel publisher (Phase 7, D-01)'),
+        DeclareLaunchArgument(
+            'safety_gate_params',
+            default_value=os.path.join(bringup_dir, 'config', 'safety_gate_params.yaml'),
+            description='safety_gate_node parameter file'),
+        DeclareLaunchArgument(
+            'cmd_vel_relay', default_value='false',
+            description='Debug: relay /cmd_vel_nav -> /cmd_vel without the gate (ignored while '
+                        'safety_gate is true, D-16)'),
     ]
 
     # D-20: CycloneDDS for every SemNav process (Fast DDS lost TF between Nav2 servers).
@@ -143,10 +155,20 @@ def generate_launch_description():
         output='screen',
         arguments=['/cmd_vel_nav', '/cmd_vel'],
         parameters=[{'use_sim_time': use_sim_time}],
-        condition=IfCondition(cmd_vel_relay))
+        condition=IfCondition(PythonExpression(
+            ["'", cmd_vel_relay, "' == 'true' and '", safety_gate, "' != 'true'"])))
+
+    gate = Node(
+        package='semnav_control',
+        executable='safety_gate_node',
+        name='safety_gate_node',
+        output='screen',
+        parameters=[safety_gate_params, {'use_sim_time': use_sim_time}],
+        condition=IfCondition(safety_gate))
 
     env = [stdout_linebuf_envvar] + dds_env
     return LaunchDescription(declare_args + env + nav2_nodes + [
         lifecycle_manager,
         relay,
+        gate,
     ])

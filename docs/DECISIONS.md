@@ -572,3 +572,14 @@ total). Every shell sources it between /opt/ros/humble and the workspace (README
 Confirmation soak (10 min, Cyclone, sim + AMCL + Nav2 + yolo + fusion, annotated images on):
 36/36 goals SUCCEEDED, 2 stale-TF errors (both at startup, before the AMCL initial pose; same
 in every healthy run), map->odom age -1.1..-0.8 s, CPU ~74 % idle.
+
+## D-23 Safety gate implementation choices  - ACCEPTED (confirmed by user 2026-10-03)
+
+1. Acceleration limiter applies only to increases of |linear.x|; braking, obstacle stops and
+   watchdog stops take effect on the next 20 Hz tick. A sign change goes through zero.
+2. A cone with no valid return counts as clear (TB3 LiDAR reports "no return" as inf); a dead
+   LiDAR is caught by the scan watchdog instead.
+3. Watchdog ages are measured from message ARRIVAL on a steady clock (not header stamps, not sim
+   time; verified in safety_gate_node.cpp: steady_clock_.now() stored in each callback), and the
+   publish timer is a wall timer. Consequence: a sim much slower than real time (RTF < ~0.67)
+   can trip the 0.3 s scan watchdog with the 5 Hz LiDAR; observed RTF is 0.98-1.0.
