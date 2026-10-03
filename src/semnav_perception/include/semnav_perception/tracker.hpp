@@ -44,6 +44,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <stdexcept>
 #include <string>
 #include <tuple>
@@ -70,6 +71,15 @@ struct TrackerParams {
   uint32_t miss_frames{10};
   /// Time [s] since last_seen after which a track is dropped regardless of visibility.
   double max_age{120.0};
+  /// D-26: a track is CONFIRMED once it has absorbed at least min_hits observations (>= 1).
+  /// Callers publish confirmed tracks only.
+  uint32_t min_hits{3};
+  /// D-26: unconfirmed (tentative) tracks are dropped after this many seconds unseen.
+  double tentative_max_age{2.0};
+  /// D-26: same-class tracks closer than this [m] are merged (the node uses the class footprint
+  /// diameter, 2 * class_radius). Key "default" applies to classes not listed; missing or <= 0
+  /// disables merging for that class.
+  std::map<std::string, double> merge_distance{};
 };
 
 /// Throws std::invalid_argument unless assoc_gate > 0 (finite),
@@ -86,6 +96,17 @@ inline void validate(const TrackerParams& p) {
   }
   if (!(p.max_age > 0.0) || !std::isfinite(p.max_age)) {
     throw std::invalid_argument("TrackerParams: max_age must be finite and > 0");
+  }
+  if (p.min_hits < 1) {
+    throw std::invalid_argument("TrackerParams: min_hits must be >= 1");
+  }
+  if (!(p.tentative_max_age > 0.0) || !std::isfinite(p.tentative_max_age)) {
+    throw std::invalid_argument("TrackerParams: tentative_max_age must be finite and > 0");
+  }
+  for (const auto& [cls, d] : p.merge_distance) {
+    if (!std::isfinite(d)) {
+      throw std::invalid_argument("TrackerParams: merge_distance for " + cls + " must be finite");
+    }
   }
 }
 
@@ -201,18 +222,33 @@ class Tracker {
       tracks_.push_back(std::move(t));
     }
 
+    merge_close_tracks();  // D-26, after new tracks so a fresh ghost merges immediately
     return tracks_;
   }
 
   /// Current tracks, sorted by ascending id.
   const std::vector<Track>& tracks() const { return tracks_; }
 
+  /// D-26: confirmed tracks only (hits >= min_hits), sorted by id. Publish these.
+  std::vector<Track> confirmed() const {
+    std::vector<Track> out;
+    for (const Track& t : tracks_) {
+      if (is_confirmed(t)) {
+        out.push_back(t);
+      }
+    }
+    return out;
+  }
+
+  bool is_confirmed(const Track& t) const { return t.hits >= params_.min_hits; }
+
   /// Remove every track with now_sec - last_seen > max_age.
   void expire(double now_sec) {
-    const double max_age = params_.max_age;
     tracks_.erase(std::remove_if(tracks_.begin(), tracks_.end(),
-                                 [now_sec, max_age](const Track& t) {
-                                   return now_sec - t.last_seen > max_age;
+                                 [this, now_sec](const Track& t) {
+                                   const double age = is_confirmed(t) ? params_.max_age
+                                                                      : params_.tentative_max_age;
+                                   return now_sec - t.last_seen > age;
                                  }),
                   tracks_.end());
   }
@@ -222,6 +258,53 @@ class Tracker {
   void reset() { tracks_.clear(); }
 
  private:
+  double merge_distance_for(const std::string& cls) const {
+    auto it = params_.merge_distance.find(cls);
+    if (it == params_.merge_distance.end()) {
+      it = params_.merge_distance.find("default");
+    }
+    return it == params_.merge_distance.end() ? 0.0 : it->second;
+  }
+
+  /// D-26: merge same-class tracks closer than merge_distance_for(class). The survivor is the
+  /// track with more hits (tie: lower id); its position becomes the hits-weighted mean, hits are
+  /// summed, last_seen = max, first_seen = min, misses = min, confidence/range from the more
+  /// recently seen one. Repeats until no pair is closer than the distance.
+  void merge_close_tracks() {
+    bool merged = true;
+    while (merged) {
+      merged = false;
+      for (std::size_t i = 0; i < tracks_.size() && !merged; ++i) {
+        for (std::size_t j = i + 1; j < tracks_.size() && !merged; ++j) {
+          Track& a = tracks_[i];
+          Track& b = tracks_[j];
+          const double md = merge_distance_for(a.class_name);
+          if (a.class_name != b.class_name || !(md > 0.0) ||
+              std::hypot(a.x - b.x, a.y - b.y) >= md) {
+            continue;
+          }
+          const bool keep_a = a.hits >= b.hits;  // a has the lower id (tracks_ sorted by id)
+          Track& keep = keep_a ? a : b;
+          const Track drop = keep_a ? b : a;
+          const double wk = static_cast<double>(keep.hits);
+          const double wd = static_cast<double>(drop.hits);
+          keep.x = (wk * keep.x + wd * drop.x) / (wk + wd);
+          keep.y = (wk * keep.y + wd * drop.y) / (wk + wd);
+          if (drop.last_seen > keep.last_seen) {
+            keep.confidence = drop.confidence;
+            keep.range = drop.range;
+          }
+          keep.last_seen = std::max(keep.last_seen, drop.last_seen);
+          keep.first_seen = std::min(keep.first_seen, drop.first_seen);
+          keep.misses = std::min(keep.misses, drop.misses);
+          keep.hits += drop.hits;
+          tracks_.erase(tracks_.begin() + static_cast<std::ptrdiff_t>(keep_a ? j : i));
+          merged = true;
+        }
+      }
+    }
+  }
+
   static bool finite_xy(const Observation& o) { return std::isfinite(o.x) && std::isfinite(o.y); }
 
   TrackerParams params_;

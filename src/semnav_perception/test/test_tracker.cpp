@@ -22,6 +22,7 @@ sp::TrackerParams makeParams(double gate = 0.6, double alpha = 0.5, double max_a
   p.assoc_gate = gate;
   p.smoothing_alpha = alpha;
   p.max_age = max_age;
+  p.min_hits = 1;  // every track confirmed: tests below predate D-26 confirmation
   return p;
 }
 
@@ -52,6 +53,9 @@ TEST(TrackerParams, DefaultsMatchDocumentedValues) {
   EXPECT_DOUBLE_EQ(p.assoc_gate, 0.6);
   EXPECT_DOUBLE_EQ(p.smoothing_alpha, 0.5);
   EXPECT_DOUBLE_EQ(p.max_age, 120.0);
+  EXPECT_EQ(p.min_hits, 3U);
+  EXPECT_DOUBLE_EQ(p.tentative_max_age, 2.0);
+  EXPECT_TRUE(p.merge_distance.empty());
   EXPECT_EQ(p.miss_frames, 10U);
   EXPECT_NO_THROW(sp::Tracker{p});
 }
@@ -420,5 +424,79 @@ TEST(TrackerD25, PredicateIsPerTrack) {
 TEST(TrackerD25, BadMissFramesThrows) {
   sp::TrackerParams p = makeParams();
   p.miss_frames = 0;
+  EXPECT_THROW(sp::Tracker{p}, std::invalid_argument);
+}
+
+// ---------------------------------------------------------------- D-26 ghost suppression
+
+TEST(TrackerD26, ConfirmedOnlyAfterMinHits) {
+  sp::TrackerParams p = makeParams(0.6, 0.5, 120.0);
+  p.min_hits = 3;
+  sp::Tracker tr(p);
+  tr.update({obs("person", 1.0, 0.0)}, 0.0);
+  EXPECT_TRUE(tr.confirmed().empty());  // hits 1
+  tr.update({obs("person", 1.0, 0.0)}, 0.1);
+  EXPECT_TRUE(tr.confirmed().empty());  // hits 2
+  tr.update({obs("person", 1.0, 0.0)}, 0.2);
+  ASSERT_EQ(tr.confirmed().size(), 1u);  // hits 3
+  EXPECT_EQ(tr.confirmed()[0].id, 1u);
+}
+
+TEST(TrackerD26, TentativeTrackExpiresFastConfirmedPersists) {
+  // tentative_max_age 2 s, max_age 120 s: a 1-hit ghost dies after 2 s, a confirmed track stays.
+  sp::TrackerParams p = makeParams(0.6, 0.5, 120.0);
+  p.min_hits = 2;
+  sp::Tracker tr(p);
+  tr.update({obs("person", 1.0, 0.0), obs("person", 5.0, 0.0)}, 0.0);
+  tr.update({obs("person", 1.0, 0.0)}, 0.1);  // id 1 confirmed (2 hits), id 2 tentative
+  auto out = tr.update({}, 2.0);              // id 2: 2.0 - 0.0 == 2.0 keeps
+  EXPECT_EQ(out.size(), 2u);
+  out = tr.update({}, 2.2);  // id 2: 2.2 > 2.0 -> dropped; id 1 kept (max_age 120)
+  ASSERT_EQ(out.size(), 1u);
+  EXPECT_EQ(out[0].id, 1u);
+  EXPECT_EQ(tr.update({}, 100.0).size(), 1u);
+}
+
+TEST(TrackerD26, SameClassTracksCloserThanFootprintMerge) {
+  // merge distance 0.7 m (person footprint diameter 2 * 0.35). Gate 0.6 m: an observation 0.65 m
+  // away spawns a second track, which is then merged into the first (more hits survives).
+  sp::TrackerParams p = makeParams(0.6, 0.5, 120.0);
+  p.merge_distance = {{"person", 0.7}};
+  sp::Tracker tr(p);
+  tr.update({obs("person", 0.0, 0.0)}, 0.0);
+  tr.update({obs("person", 0.0, 0.0)}, 0.1);              // id 1: 2 hits at (0, 0)
+  auto out = tr.update({obs("person", 0.65, 0.0)}, 0.2);  // id 2 spawned (1 hit), merged
+  ASSERT_EQ(out.size(), 1u);
+  EXPECT_EQ(out[0].id, 1u);
+  EXPECT_EQ(out[0].hits, 3u);
+  // hits-weighted mean: (2 * 0.0 + 1 * 0.65) / 3 = 0.216667
+  EXPECT_NEAR(out[0].x, 0.65 / 3.0, 1e-9);
+  EXPECT_DOUBLE_EQ(out[0].last_seen, 0.2);
+}
+
+TEST(TrackerD26, NoMergeAcrossClassesOrBeyondDistance) {
+  sp::TrackerParams p = makeParams(0.6, 0.5, 120.0);
+  p.merge_distance = {{"person", 0.7}, {"default", 0.5}};
+  sp::Tracker tr(p);
+  // person 0.75 m apart (>= 0.7): kept apart; chair 0.3 m from a person: different class.
+  auto out =
+      tr.update({obs("person", 0.0, 0.0), obs("person", 0.75, 0.0), obs("chair", 0.3, 0.0)}, 0.0);
+  EXPECT_EQ(out.size(), 3u);
+  // Two chairs 0.4 m apart use the "default" distance 0.5 -> merged into one.
+  out = tr.update({obs("chair", 0.3, 0.0), obs("chair", 0.3, 0.4)}, 0.1);
+  EXPECT_EQ(std::count_if(out.begin(), out.end(),
+                          [](const sp::Track& t) { return t.class_name == "chair"; }),
+            1);
+}
+
+TEST(TrackerD26, BadParamsThrow) {
+  sp::TrackerParams p = makeParams();
+  p.min_hits = 0;
+  EXPECT_THROW(sp::Tracker{p}, std::invalid_argument);
+  p = makeParams();
+  p.tentative_max_age = 0.0;
+  EXPECT_THROW(sp::Tracker{p}, std::invalid_argument);
+  p = makeParams();
+  p.merge_distance = {{"person", std::numeric_limits<double>::infinity()}};
   EXPECT_THROW(sp::Tracker{p}, std::invalid_argument);
 }

@@ -79,9 +79,16 @@ class SemanticFusionNode : public rclcpp::Node {
     }
     tp.miss_frames = static_cast<uint32_t>(miss_frames);
     tp.max_age = declare_parameter<double>("max_age", 120.0);
+    // D-26: ghost suppression. Publish confirmed tracks only; tentative tracks die fast; merge
+    // same-class tracks closer than the class footprint diameter (2 * class_radius).
+    const auto min_hits = declare_parameter<int>("min_hits", 3);
+    if (min_hits < 1) {
+      throw std::invalid_argument("min_hits must be >= 1");
+    }
+    tp.min_hits = static_cast<uint32_t>(min_hits);
+    tp.tentative_max_age = declare_parameter<double>("tentative_max_age", 2.0);
     fov_margin_px_ = declare_parameter<double>("fov_margin_px", 40.0);
     tp.smoothing_alpha = declare_parameter<double>("smoothing_alpha", 0.5);
-    tracker_ = std::make_unique<Tracker>(tp);
     scan_buffer_size_ = static_cast<std::size_t>(declare_parameter<int>("scan_buffer_size", 10));
     max_scan_dt_ = declare_parameter<double>("max_scan_dt", 0.1);  // 7.2 slop
     tf_timeout_ = declare_parameter<double>("tf_timeout", 0.1);
@@ -90,6 +97,10 @@ class SemanticFusionNode : public rclcpp::Node {
     const auto qos_depth = declare_parameter<int>("qos_depth", 5);
     const auto expiry_period = declare_parameter<double>("expiry_check_period", 0.5);
     declare_class_radii();
+    for (const auto& [cls, r] : class_radius_) {
+      tp.merge_distance[cls] = 2.0 * r;
+    }
+    tracker_ = std::make_unique<Tracker>(tp);
 
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
     tf_buffer_->setCreateTimerInterface(std::make_shared<tf2_ros::CreateTimerROS>(
@@ -227,8 +238,8 @@ class SemanticFusionNode : public rclcpp::Node {
                                    fusion_params_.min_range, fusion_params_.max_range);
       };
     }
-    const auto tracks = tracker_->update(observations, stamp.seconds(), observable);
-    publish(tracks, msg.header.stamp);
+    tracker_->update(observations, stamp.seconds(), observable);
+    publish(tracker_->confirmed(), msg.header.stamp);
   }
 
   /// Fuses every detection of the frame into map-frame observations. Returns true if the frame
@@ -307,7 +318,7 @@ class SemanticFusionNode : public rclcpp::Node {
     const auto before = tracker_->tracks().size();
     tracker_->expire(now().seconds());
     if (tracker_->tracks().size() != before) {
-      publish(tracker_->tracks(), now());
+      publish(tracker_->confirmed(), now());
     }
   }
 

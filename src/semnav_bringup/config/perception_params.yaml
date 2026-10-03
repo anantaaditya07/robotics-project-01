@@ -24,6 +24,9 @@ semantic_fusion_node:
     ttl: 2.0                   # s, lifetime stamped on published obstacles/markers (republished every frame)
     miss_frames: 10            # D-25: in-view, in-range, fused frames without a match before a track is dropped
     max_age: 120.0             # s, D-25: drop a track not seen for this long, even out of view
+    min_hits: 3                # D-26: observations before a track is confirmed and published
+    tentative_max_age: 2.0     # s, D-26: unconfirmed tracks are dropped after this long unseen
+    # D-26: same-class tracks closer than 2 * class_radius (footprint diameter) are merged
     fov_margin_px: 40.0        # px, D-25: image-border margin for the in-view test
     smoothing_alpha: 0.5
     push_out_fraction: 0.5     # D-21: push the LiDAR point out by this fraction of class_radius
