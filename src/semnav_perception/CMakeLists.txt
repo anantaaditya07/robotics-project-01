@@ -70,6 +70,12 @@ if(BUILD_TESTING)
   endforeach()
   target_compile_definitions(test_yolo_detector PRIVATE
     SEMNAV_TEST_MODEL_PATH="${SEMNAV_MODEL_PATH}")
+
+  # Fusion and tracking logic (architecture 7.2): plain STL, no ROS, no OpenCV.
+  foreach(t test_fusion test_tracker)
+    ament_add_gtest(${t} test/${t}.cpp)
+    target_include_directories(${t} PRIVATE include)
+  endforeach()
 endif()
 
 ament_package()
