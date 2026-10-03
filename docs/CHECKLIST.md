@@ -26,9 +26,12 @@ Open questions blocking a phase are listed in docs/DECISIONS.md (D-xx).
       camera_link -> camera_rgb_frame -> camera_rgb_optical_frame, ...};
       camera_rgb_optical_frame -> base_scan resolves
 - [x] Robot drives on /cmd_vel (scripted Twist 0.15 m/s: odom x -2.00 -> -1.41, stops on zero)
-- [ ] USER: teleop by keyboard (`ros2 run teleop_twist_keyboard teleop_twist_keyboard`)
-- [ ] USER: RViz (launched by sim.launch.py, config rviz/semnav.rviz) shows robot model, TF,
-      LaserScan and Camera image (could not be checked headless: RViz needs a real display)
+- [x] USER: teleop by keyboard (`ros2 run teleop_twist_keyboard teleop_twist_keyboard`)
+      - confirmed by user 2026-10-03
+- [x] USER: RViz (launched by sim.launch.py, config rviz/semnav.rviz) shows robot model, TF,
+      LaserScan and Camera image - confirmed by user 2026-10-03
+
+**Status: Phase 1 DONE (2026-10-03).**
 
 **Done when:** Teleop works; camera and scan visible in RViz.
 
