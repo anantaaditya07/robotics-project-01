@@ -432,7 +432,7 @@ inference takes ~40 ms (p50) and the camera runs at 15 Hz; 0 frames dropped by t
 (SHM segment 10 MB + UDPv4, 8 MB socket buffers) exported as FASTRTPS_DEFAULT_PROFILES_FILE by the
 SemNav launch files; user raises UDP buffers via /etc/sysctl.d (sudo).
 
-## D-20 Nav2 server stops receiving map->odom from one TF publisher (DDS reader stall)  - OPEN (option B applied, did not fix)
+## D-20 Nav2 server stops receiving map->odom from one TF publisher (DDS reader stall)  - ROOT CAUSE FOUND (tf2_ros deadlock), fix OPEN
 
 **Symptom (2026-10-03, Phase 5 verification):** with sim + AMCL + Nav2 + perception running,
 controller_server logged "Transform data too old when converting from map to odom" continuously
@@ -533,3 +533,28 @@ range); person 3.3 m 0.15 m, chair 1.8 m 0.09 m, chair 1.0 m 0.11 m unchanged.
 Next step: backtrace of controller_server during a stall (run it under gdb via a launch prefix,
 or temporarily allow ptrace: ptrace_scope is 1), and test without the fusion node's
 /semantic_obstacles and /semantic_markers publishers.
+
+**Root cause (2026-10-03 20:36, gdb all-thread backtrace of controller_server during a stall,
+controller run under gdb via a launch prefix):** lock-order inversion (ABBA deadlock) inside
+tf2_ros::Buffer in the controller_server process:
+- TF listener thread: TransformListener::subscription_callback -> BufferCore::setTransform ->
+  BufferCore::testTransformableRequests() holds BufferCore's transformable-requests mutex
+  (0x555555693b30) and blocks on a tf2_ros::Buffer mutex (0x555555693be0) inside the request
+  callback.
+- Costmap layer thread (liblayers.so, the obstacle layer's tf2_ros::MessageFilter on /scan):
+  tf2_ros::Buffer::waitForTransform holds 0x555555693be0 and blocks in
+  BufferCore::addTransformableRequest on 0x555555693b30.
+The listener thread never returns, so the process stops inserting /tf: every frame freezes, which
+explains map->odom AND the local footprint stamp freezing while AMCL keeps publishing. It is a
+timing race: extra load (yolo + fusion) and goal transitions make it likely; without them it was
+not observed in 150 s soaks. Not DDS-related (same on Fast DDS and Cyclone). Installed
+ros-humble-tf2-ros 0.25.23 is the newest Humble package (no newer candidate).
+Backtrace excerpt kept in docs/d20_controller_backtrace.txt.
+
+**Fix options (decision needed)**
+- A. Overlay-build tf2_ros (geometry2 humble branch) with the lock-order fix backported, in a
+  separate underlay workspace. Fixes the cause for every Nav2 server; adds a vendored dependency.
+- B. Mitigate: keep load away from Nav2 (e.g. run perception in a separate CPU set / lower
+  priority) and/or reduce waitForTransform traffic (obstacle layer `transform_tolerance`, scan
+  rate). Lowers the probability only.
+- C. Report upstream and accept the risk for the demo with a restart watchdog.
